@@ -1,95 +1,168 @@
-# Xiaomi / Sensy USB IR Blaster Dongle (`2717:003d`)
+# Xiaomi / Sensy USB IR Blaster Dongle (`2717:003d`) & STB Remote System
 
-A standalone Node.js driver and CLI utility for the Xiaomi / Sensara Sensy USB Consumer IR Dongle, reverse-engineered directly from `co-sensara-appsense-188-62097078-e53d5b3b45d2fd3224df1ea62a890347.apk`.
-
----
-
-## Hardware Specifications
-* **Vendor ID (VID):** `0x2717` (Xiaomi Inc.)
-* **Product ID (PID):** `0x003d` (Sensy Consumer IR Dongle)
-* **USB Interface:** `0` (Vendor-specific `0xFF/0xFF/0xFF`)
-* **Endpoint 2 (OUT, Interrupt):** Command Dispatch (OPCODES)
-* **Endpoint 1 (IN, Interrupt):** Response & State Telemetry
-* **Endpoint 4 (OUT, Bulk):** Pulse Timing Buffer Stream (64-byte chunks, uint32_LE microseconds)
+A TypeScript driver, STB SQLite database library, and pairing/transmission CLI for the Xiaomi / Sensara Sensy USB Consumer IR Dongle. Reverse-engineered directly from `co-sensara-appsense-188-62097078-e53d5b3b45d2fd3224df1ea62a890347.apk`.
 
 ---
 
-## Prerequisites
-Node.js (v18+) with `usb` package installed:
-```bash
-npm install usb
-```
+## Architecture Overview
 
-Ensure your user has read/write permissions to the USB device in `/dev/bus/usb/`.
+```
+                                      +-------------------------------+
+                                      |    Sensara CDN (Online)       |
+                                      |  lcndata/lcndb-v<ver>.db      |
+                                      +---------------+---------------+
+                                                      |  OTA Sync
+                                                      v
++--------------------------+          +---------------+---------------+
+|    SensyIrDongle (USB)   | <------> |     SensyDatabase (SQLite)    |
+|   - State Machine        |          |  - Offline database (v380)    |
+|   - NEC 32-bit encoder   |          |  - Kerala Vision (Group 43)   |
+|   - Bulk stream buffer   |          |  - 7 Candidate Remote models  |
++------------+-------------+          +---------------+---------------+
+             |                                        |
+             +-------------------+--------------------+
+                                 |
+                                 v
+                     +-----------------------+
+                     |  pair_and_send CLI    |
+                     |  - Interactive Pairing|
+                     |  - Keycode Dispatch   |
+                     |  - CDN Update & Sync  |
+                     +-----------------------+
+```
 
 ---
 
-## CLI Usage
+## Features
 
-### 1. View Dongle Info & Status
+- **Strict TypeScript Types**: Fully typed interfaces for all hardware states, SQLite database entities, protocol models, and paired profiles (`types.ts`).
+- **Offline & Online Database (`SensyDatabase`)**:
+  - Uses Node's built-in `node:sqlite` for zero-native-dependency SQLite access.
+  - Queries 3,700+ providers, STB models, key mappings, and protocol parameters.
+  - Built-in online CDN checker and OTA updater supporting versions up to **v435**.
+- **USB IR Blaster Driver (`SensyIrDongle`)**:
+  - WebUSB-compliant device driver for Xiaomi `2717:003d`.
+  - Encodes 32-bit NEC codes (MSB-first), standard NEC address/command bytes, Pronto HEX, and arbitrary raw pulse/space intervals.
+- **Pairing & Transmission CLI (`pair_and_send.ts`)**:
+  - Interactive pairing wizard cycling through candidate remotes (e.g. Kerala Vision 43, 74, 85, 114, 116, 184, 248).
+  - One-line key transmission: `power`, `vol_up`, `vol_down`, `ch_up`, `ch_down`, `ok`, digits `0-9`, etc.
+  - Rapid testing of all candidate profiles.
+
+---
+
+## Build & Test
+
 ```bash
-node sensy_ir.js --info
+# Build TypeScript
+npm run build
+
+# Run All Tests (Database, Protocol/Hardware, and E2E)
+npm test
+
+# Or run individual test suites:
+npm run test:db    # SQLite queries, Kerala Vision key resolution, and CDN version probe
+npm run test:ir    # NEC timing generation, state machine & real hardware TX
+npm run test:e2e   # Pairing, saving config, and end-to-end keycode dispatch
 ```
 
-### 2. Run Self-Test
-Sends a test NEC power frame and observes state transitions:
+---
+
+## CLI Usage (`pair_and_send`)
+
+### 1. Check Dongle & Database Status
 ```bash
-node sensy_ir.js --test
+npm run stb -- --status
+```
+Output:
+```text
+=== Sensy IR Dongle Status ===
+USB Hardware : Connected (VID: 0x2717, PID: 0x3d)
+Firmware API : v1
+Device State : Idle (Code: 0)
+
+=== Database Metadata ===
+Local DB Version : v380 (Model v1)
+
+=== Paired STB Configuration ===
+Provider   : Kerala Vision
+Remote ID  : 43
+Protocol   : NEC (38000 Hz, 32 bits)
+Total Keys : 38 configured
 ```
 
-### 3. Send NEC IR Command
-Transmit an address and command (hex or decimal):
+### 2. Kerala Vision STB Pairing
+
+#### A. Interactive Pairing Wizard
+Cycles through candidate remotes one by one, prompting you to verify if the STB turns ON/OFF or adjusts volume:
 ```bash
-node sensy_ir.js --nec 0x04 0x08
+npm run stb -- --pair-kerala
 ```
 
-### 4. Send Pronto HEX Code
-Transmit standard Pronto hex formatted codes:
+#### B. Rapid Test All Kerala Vision Profiles
+Sends the `POWER` command for each of the 7 candidate remote models every 2.5 seconds so you can watch which one toggles your STB:
 ```bash
-node sensy_ir.js --pronto "0000 006D 0022 0002 0155 00AA 0015 0015 0015 0040 ..."
+npm run stb -- --test-all-kerala
 ```
 
-### 5. Send Raw Pulse Timings
-Transmit custom carrier frequency and pulse/space durations (in microseconds):
+#### C. Directly Pair a Known Remote ID
 ```bash
-node sensy_ir.js --raw 38000 "9000,4500,560,560,560,1690,560"
+npm run stb -- --pair-remote 43 --provider "Kerala Vision"
 ```
 
-### 6. Reset Dongle
+### 3. Send Keycodes to Paired STB
+Once paired, commands are resolved from `paired_stb.json` and transmitted immediately:
 ```bash
-node sensy_ir.js --reset
+npm run stb -- --send power
+npm run stb -- --send vol_up
+npm run stb -- --send vol_down
+npm run stb -- --send ch_up
+npm run stb -- --send ch_down
+npm run stb -- --send ok
+npm run stb -- --send mute
+npm run stb -- --send 1
+```
+
+### 4. Direct Sending (Without Pairing)
+```bash
+npm run stb -- --send-direct 43 power
+npm run stb -- --send-direct 74 vol_up
+```
+
+### 5. Online Database Updates
+Check for updates or download the latest database from Sensara CDN:
+```bash
+# Check latest CDN revision
+npm run stb -- --check-update
+
+# Download and upgrade local database
+npm run stb -- --update-db
 ```
 
 ---
 
 ## Programmatic Library Usage
 
-You can import `SensyIrDongle` directly in your Node.js projects:
+```typescript
+import { SensyDatabase, SensyIrDongle } from './src/index.js';
 
-```javascript
-const { SensyIrDongle } = require('./sensy_ir.js');
+async function main() {
+    // 1. Initialize SQLite Database & look up Kerala Vision
+    const db = new SensyDatabase();
+    db.open();
+    const remotes = db.getKeralaVisionRemotes();
+    console.log(`Found ${remotes.length} candidate remotes for Kerala Vision.`);
 
-async function run() {
+    const profile = remotes[0]; // Remote 43
+    const pwrCode = profile.keyMap['POWER'].rawCode; // '0x14eb18e7'
+    db.close();
+
+    // 2. Transmit via USB Dongle
     const dongle = new SensyIrDongle();
-
-    try {
-        await dongle.connect();
-
-        // 1. Send NEC code (e.g. Address 0x04, Command 0x08)
-        await dongle.sendNec(0x04, 0x08);
-
-        // 2. Or send raw pulse/space timings (in microseconds) at 38kHz
-        const timings = [9000, 4500, 560, 560, 560, 1690, 560];
-        await dongle.transmit(38000, timings);
-
-        // 3. Or send Pronto HEX format
-        await dongle.sendPronto("0000 006D 0004 0000 0015 0015 0015 0041");
-
-    } finally {
-        await dongle.disconnect();
-    }
+    await dongle.connect();
+    console.log(`Transmitting POWER (${pwrCode}) to Set-Top Box...`);
+    await dongle.sendNecHex(pwrCode, profile.remote.length, 38000);
+    await dongle.disconnect();
 }
 
-run().catch(console.error);
+main().catch(console.error);
 ```
-

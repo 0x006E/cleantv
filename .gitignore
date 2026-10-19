@@ -1,4 +1,7 @@
 node_modules/
+dist/
+*.download
+*.bak
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

@@ -1,27 +1,41 @@
 {
   "name": "mi-tv-ir",
   "version": "1.0.0",
-  "description": "Xiaomi / Sensara Sensy USB Consumer IR Dongle Driver & CLI",
-  "main": "sensy_ir.js",
+  "description": "Xiaomi / Sensara Sensy USB Consumer IR Dongle Driver, STB Database & CLI",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "type": "module",
   "bin": {
-    "sensy-ir": "./sensy_ir.js"
+    "sensy-ir": "./dist/src/pair_and_send.js"
   },
   "scripts": {
-    "test": "node sensy_ir.js --test",
-    "info": "node sensy_ir.js --info"
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test:db": "node dist/tests/test_db.js",
+    "test:ir": "node dist/tests/test_ir.js",
+    "test:e2e": "node dist/tests/test_pair_send.js",
+    "test": "npm run test:db && npm run test:ir && npm run test:e2e",
+    "stb": "node dist/src/pair_and_send.js"
   },
   "keywords": [
     "xiaomi",
+    "sensara",
     "sensy",
     "ir",
     "infrared",
     "remote",
     "usb",
-    "blaster"
+    "blaster",
+    "set-top-box",
+    "kerala-vision"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "usb": "^2.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
   }
 }
