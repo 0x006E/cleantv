@@ -1,0 +1,27 @@
+{
+  "name": "mi-tv-ir",
+  "version": "1.0.0",
+  "description": "Xiaomi / Sensara Sensy USB Consumer IR Dongle Driver & CLI",
+  "main": "sensy_ir.js",
+  "bin": {
+    "sensy-ir": "./sensy_ir.js"
+  },
+  "scripts": {
+    "test": "node sensy_ir.js --test",
+    "info": "node sensy_ir.js --info"
+  },
+  "keywords": [
+    "xiaomi",
+    "sensy",
+    "ir",
+    "infrared",
+    "remote",
+    "usb",
+    "blaster"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "usb": "^2.16.0"
+  }
+}
