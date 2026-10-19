@@ -11,6 +11,14 @@
     libusb1
   ];
 
+  # Android SDK configuration
+  android = {
+    enable = true;
+    reactNative.enable = true;
+    platforms.version = [ "34" "35" ];
+    buildTools.version = [ "35.0.0" ];
+  };
+
   # Languages
   languages.javascript = {
     enable = true;

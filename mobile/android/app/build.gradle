@@ -38,5 +38,3 @@ dependencies {
     implementation("com.facebook.react:react-android")
     implementation("androidx.appcompat:appcompat:1.7.0")
 }
-
-apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)

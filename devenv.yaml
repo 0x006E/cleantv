@@ -4,7 +4,7 @@ inputs:
     url: github:cachix/devenv-nixpkgs/rolling
 
 # If you're using non-OSS software, you can set allow_unfree to true.
-# allow_unfree: true
+allow_unfree: true
 
 # If you're not willing to allow unsupported packages:
 # allow_unsupported_system: false

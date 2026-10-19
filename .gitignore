@@ -18,3 +18,11 @@ devenv.local.yaml
 
 # pre-commit
 .pre-commit-config.yaml
+
+# Android & Gradle
+.gradle/
+build/
+app/build/
+*.apk
+*.aab
+local.properties
