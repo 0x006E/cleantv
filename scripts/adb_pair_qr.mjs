@@ -93,3 +93,4 @@ setTimeout(() => {
     console.log('\nListener timed out. You can re-run with: node scripts/adb_pair_qr.mjs');
     process.exit(0);
 }, 90000);
+

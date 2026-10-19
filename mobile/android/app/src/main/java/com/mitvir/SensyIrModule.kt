@@ -5,9 +5,13 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.database.sqlite.SQLiteDatabase
 import android.hardware.usb.*
 import android.os.Build
 import com.facebook.react.bridge.*
+import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -18,6 +22,7 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
         const val VENDOR_ID = 0x2717
         const val PRODUCT_ID = 0x003d
         const val ACTION_USB_PERMISSION = "com.mitvir.USB_PERMISSION"
+        const val DB_NAME = "lcndb.db"
 
         // Dongle Opcodes
         const val OP_GET_CONFIG = 1
@@ -26,6 +31,20 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
         const val OP_END_BUFFER = 4
         const val OP_RESET = 120
         const val OP_GET_VERSION = 127
+
+        val KEY_NAMES = mapOf(
+            0 to "0", 1 to "1", 2 to "2", 3 to "3", 4 to "4",
+            5 to "5", 6 to "6", 7 to "7", 8 to "8", 9 to "9",
+            10 to "VOL UP", 11 to "VOL DOWN", 12 to "VOL MUTE",
+            13 to "CH UP", 14 to "CH DOWN", 15 to "POWER",
+            16 to "SELECT", 17 to "BACK", 18 to "EXIT", 19 to "MENU",
+            20 to "INFO", 21 to "UP", 22 to "DOWN", 23 to "LEFT",
+            24 to "RIGHT", 25 to "OK", 26 to "RED", 27 to "GREEN",
+            28 to "YELLOW", 29 to "BLUE", 30 to "PLAY", 31 to "REWIND",
+            32 to "FAST FORWARD", 33 to "RECORD", 34 to "PAUSE", 35 to "STOP",
+            36 to "SOURCE", 37 to "OPTIONS", 38 to "LANGUAGE", 39 to "GUIDE",
+            40 to "PREVIOUS", 41 to "NEXT"
+        )
     }
 
     private val usbManager: UsbManager = reactContext.getSystemService(Context.USB_SERVICE) as UsbManager
@@ -35,8 +54,37 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
     private var epCmd: UsbEndpoint? = null
     private var epResp: UsbEndpoint? = null
     private var epData: UsbEndpoint? = null
+    private var database: SQLiteDatabase? = null
 
     override fun getName(): String = NAME
+
+    init {
+        initDatabase()
+    }
+
+    private fun initDatabase() {
+        try {
+            val dbFile = reactContext.getDatabasePath(DB_NAME)
+            if (!dbFile.exists()) {
+                dbFile.parentFile?.mkdirs()
+                reactContext.assets.open(DB_NAME).use { input ->
+                    FileOutputStream(dbFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+            database = SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READWRITE)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun getDb(): SQLiteDatabase {
+        if (database == null || !database!!.isOpen) {
+            initDatabase()
+        }
+        return database ?: throw IllegalStateException("Database not available")
+    }
 
     private fun findDongle(): UsbDevice? {
         val deviceList = usbManager.deviceList
@@ -70,7 +118,6 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
         connection = conn
         usbInterface = intf
 
-        // Map endpoints
         for (i in 0 until intf.endpointCount) {
             val ep = intf.getEndpoint(i)
             when (ep.endpointNumber) {
@@ -81,18 +128,6 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
         }
 
         return epCmd != null && epResp != null && epData != null
-    }
-
-    private fun closeDongle() {
-        try {
-            usbInterface?.let { connection?.releaseInterface(it) }
-            connection?.close()
-        } catch (_: Exception) {}
-        connection = null
-        usbInterface = null
-        epCmd = null
-        epResp = null
-        epData = null
     }
 
     @ReactMethod
@@ -166,6 +201,130 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
         usbManager.requestPermission(device, permissionIntent)
     }
 
+    @ReactMethod
+    fun searchProviders(query: String, limit: Int, promise: Promise) {
+        Thread {
+            try {
+                val db = getDb()
+                val search = "%$query%"
+                val cursor = db.rawQuery("""
+                    SELECT p.id, p.title, p.slug, p.type, p.group_id, p.brand_id,
+                           b.title as brand_title, g.title as group_title
+                    FROM providers p
+                    LEFT JOIN provider_brands b ON p.brand_id = b.id
+                    LEFT JOIN provider_groups g ON p.group_id = g.id
+                    WHERE p.title LIKE ? OR b.title LIKE ? OR g.title LIKE ?
+                    ORDER BY p.title ASC
+                    LIMIT ?
+                """.trimIndent(), arrayOf(search, search, search, limit.toString()))
+
+                val array = Arguments.createArray()
+                while (cursor.moveToNext()) {
+                    val m = Arguments.createMap()
+                    m.putInt("id", cursor.getInt(0))
+                    m.putString("title", cursor.getString(1))
+                    m.putString("slug", cursor.getString(2))
+                    m.putString("type", cursor.getString(3))
+                    m.putInt("groupId", cursor.getInt(4))
+                    m.putInt("brandId", cursor.getInt(5))
+                    m.putString("brandTitle", cursor.getString(6) ?: "")
+                    m.putString("groupTitle", cursor.getString(7) ?: "")
+                    array.pushMap(m)
+                }
+                cursor.close()
+                promise.resolve(array)
+            } catch (e: Exception) {
+                promise.reject("DB_ERROR", e.message, e)
+            }
+        }.start()
+    }
+
+    @ReactMethod
+    fun getRemotesForProvider(providerId: Int, promise: Promise) {
+        Thread {
+            try {
+                val db = getDb()
+                // Check if provider has specific group_id
+                var groupId = 0
+                val pCursor = db.rawQuery("SELECT group_id FROM providers WHERE id = ?", arrayOf(providerId.toString()))
+                if (pCursor.moveToFirst()) {
+                    groupId = pCursor.getInt(0)
+                }
+                pCursor.close()
+
+                val query = if (groupId > 0) {
+                    """
+                    SELECT DISTINCT r.id, r.protocol, r.length, r.gap
+                    FROM provider_group_remotes pgr
+                    JOIN remotes r ON pgr.remote_id = r.id
+                    WHERE pgr.group_id = ?
+                    ORDER BY r.id ASC
+                    """.trimIndent()
+                } else {
+                    """
+                    SELECT DISTINCT r.id, r.protocol, r.length, r.gap
+                    FROM provider_remotes pr
+                    JOIN remotes r ON pr.remote_id = r.id
+                    WHERE pr.provider_id = ?
+                    ORDER BY r.id ASC
+                    """.trimIndent()
+                }
+
+                val param = if (groupId > 0) groupId.toString() else providerId.toString()
+                val cursor = db.rawQuery(query, arrayOf(param))
+
+                val array = Arguments.createArray()
+                while (cursor.moveToNext()) {
+                    val m = Arguments.createMap()
+                    val rId = cursor.getInt(0)
+                    m.putInt("id", rId)
+                    m.putInt("protocol", cursor.getInt(1))
+                    m.putInt("bitLength", cursor.getInt(2))
+                    m.putInt("gap", cursor.getInt(3))
+
+                    // Also fetch power key for quick testing preview
+                    val kCursor = db.rawQuery("SELECT code FROM key_codes WHERE remote_id = ? AND \"key\" = 15 LIMIT 1", arrayOf(rId.toString()))
+                    var powerHex = ""
+                    if (kCursor.moveToFirst()) {
+                        powerHex = kCursor.getString(0) ?: ""
+                    }
+                    kCursor.close()
+                    m.putString("powerCode", powerHex)
+
+                    array.pushMap(m)
+                }
+                cursor.close()
+                promise.resolve(array)
+            } catch (e: Exception) {
+                promise.reject("DB_ERROR", e.message, e)
+            }
+        }.start()
+    }
+
+    @ReactMethod
+    fun getKeyCodes(remoteId: Int, promise: Promise) {
+        Thread {
+            try {
+                val db = getDb()
+                val cursor = db.rawQuery("""
+                    SELECT "key", code FROM key_codes WHERE remote_id = ? ORDER BY "key" ASC
+                """.trimIndent(), arrayOf(remoteId.toString()))
+
+                val map = Arguments.createMap()
+                while (cursor.moveToNext()) {
+                    val keyId = cursor.getInt(0)
+                    val code = cursor.getString(1)
+                    val keyName = KEY_NAMES[keyId] ?: "KEY_$keyId"
+                    map.putString(keyName, code)
+                }
+                cursor.close()
+                promise.resolve(map)
+            } catch (e: Exception) {
+                promise.reject("DB_ERROR", e.message, e)
+            }
+        }.start()
+    }
+
     private fun sendCommand(cmd: ByteArray): ByteArray {
         val conn = connection ?: throw IllegalStateException("Dongle not open")
         val outEp = epCmd ?: throw IllegalStateException("Command endpoint null")
@@ -173,7 +332,7 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
 
         conn.bulkTransfer(outEp, cmd, cmd.size, 1000)
         val resp = ByteArray(64)
-        val read = conn.bulkTransfer(inEp, resp, resp.size, 1000)
+        conn.bulkTransfer(inEp, resp, resp.size, 1000)
         return resp
     }
 
@@ -246,18 +405,15 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
         }
 
         val list = mutableListOf<Int>()
-        // Leader: 9000µs mark, 4500µs space
         list.add(9000)
         list.add(4500)
 
-        // MSB first
         for (bit in bitLength - 1 downTo 0) {
             list.add(560)
             val isSet = (numericVal and (1L shl bit)) != 0L
             list.add(if (isSet) 1690 else 560)
         }
 
-        // Stop bit + lead out gap
         list.add(560)
         list.add(40000)
 

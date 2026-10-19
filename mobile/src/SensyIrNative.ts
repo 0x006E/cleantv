@@ -1,5 +1,5 @@
 /**
- * TypeScript interface to native Android USB Sensy IR module
+ * TypeScript interface to native Android USB Sensy IR module and SQLite Database
  */
 
 import { NativeModules, Platform } from 'react-native';
@@ -13,6 +13,25 @@ export interface DeviceStatus {
         deviceName: string;
     };
     message: string;
+}
+
+export interface ProviderItem {
+    id: number;
+    title: string;
+    slug: string;
+    type: string;
+    groupId: number;
+    brandId: number;
+    brandTitle: string;
+    groupTitle: string;
+}
+
+export interface RemoteCandidate {
+    id: number;
+    protocol: number;
+    bitLength: number;
+    gap: number;
+    powerCode: string;
 }
 
 const { SensyIrModule } = NativeModules;
@@ -40,6 +59,36 @@ export const SensyIr = {
             return false;
         }
         return SensyIrModule.requestPermission();
+    },
+
+    /**
+     * Search any TV / DTH / Cable provider in SQLite lcndb.db
+     */
+    async searchProviders(query: string, limit: number = 25): Promise<ProviderItem[]> {
+        if (Platform.OS !== 'android' || !SensyIrModule) {
+            return [];
+        }
+        return SensyIrModule.searchProviders(query, limit);
+    },
+
+    /**
+     * Get candidate remotes for a selected provider
+     */
+    async getRemotesForProvider(providerId: number): Promise<RemoteCandidate[]> {
+        if (Platform.OS !== 'android' || !SensyIrModule) {
+            return [];
+        }
+        return SensyIrModule.getRemotesForProvider(providerId);
+    },
+
+    /**
+     * Get all keycodes (keyName -> hexCode) for a remote ID from SQLite lcndb.db
+     */
+    async getKeyCodes(remoteId: number): Promise<Record<string, string>> {
+        if (Platform.OS !== 'android' || !SensyIrModule) {
+            return {};
+        }
+        return SensyIrModule.getKeyCodes(remoteId);
     },
 
     /**

@@ -5,13 +5,14 @@ import {
     StatusBar,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
     ActivityIndicator,
-    Alert
+    Alert,
+    FlatList
 } from 'react-native';
-import { SensyIr, DeviceStatus } from './src/SensyIrNative';
-import { KERALA_VISION_REMOTES, RemoteDefinition } from './src/stb_profiles';
+import { SensyIr, DeviceStatus, ProviderItem, RemoteCandidate } from './src/SensyIrNative';
 
 export default function App() {
     const [status, setStatus] = useState<DeviceStatus>({
@@ -19,25 +20,29 @@ export default function App() {
         hasPermission: false,
         message: 'Checking USB status...'
     });
+
+    // Provider search state
+    const [searchQuery, setSearchQuery] = useState<string>('');
+    const [searchResults, setSearchResults] = useState<ProviderItem[]>([]);
+    const [selectedProvider, setSelectedProvider] = useState<ProviderItem | null>(null);
+    const [isSearching, setIsSearching] = useState<boolean>(false);
+
+    // Candidate remotes and active keymap
+    const [candidateRemotes, setCandidateRemotes] = useState<RemoteCandidate[]>([]);
     const [selectedRemoteIndex, setSelectedRemoteIndex] = useState<number>(0);
+    const [keyMap, setKeyMap] = useState<Record<string, string>>({});
+    const [isLoadingKeys, setIsLoadingKeys] = useState<boolean>(false);
+
     const [isTransmitting, setIsTransmitting] = useState<boolean>(false);
-    const [lastLog, setLastLog] = useState<string>('Ready. Connect IR dongle via OTG cable.');
+    const [lastLog, setLastLog] = useState<string>('Ready. Plug IR dongle via USB-OTG.');
 
-    const activeRemote: RemoteDefinition = KERALA_VISION_REMOTES[selectedRemoteIndex] || KERALA_VISION_REMOTES[0];
-
+    // Check USB state periodically
     const checkUsb = async () => {
         try {
             const st = await SensyIr.getStatus();
             setStatus(st);
-            if (st.connected && st.hasPermission) {
-                setLastLog(`Connected: Xiaomi / Sensy Blaster (Remote ID: ${activeRemote.id})`);
-            } else if (st.connected && !st.hasPermission) {
-                setLastLog('Dongle detected! Tap "Grant Permission" above.');
-            } else {
-                setLastLog('Dongle not found. Plug into phone with USB-OTG adapter.');
-            }
         } catch (e: any) {
-            setLastLog(`Error checking USB: ${e.message}`);
+            setLastLog(`USB Error: ${e.message}`);
         }
     };
 
@@ -45,7 +50,76 @@ export default function App() {
         checkUsb();
         const timer = setInterval(checkUsb, 3000);
         return () => clearInterval(timer);
-    }, [activeRemote.id]);
+    }, []);
+
+    // Initial search for default provider list on launch
+    useEffect(() => {
+        handleSearch('Kerala Vision');
+    }, []);
+
+    const handleSearch = async (text: string) => {
+        setSearchQuery(text);
+        if (!text || text.trim().length === 0) {
+            setSearchResults([]);
+            return;
+        }
+
+        setIsSearching(true);
+        try {
+            const results = await SensyIr.searchProviders(text.trim(), 15);
+            setSearchResults(results);
+            // If selecting first time
+            if (!selectedProvider && results.length > 0) {
+                selectProvider(results[0]);
+            }
+        } catch (e: any) {
+            setLastLog(`Search Error: ${e.message}`);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    const selectProvider = async (provider: ProviderItem) => {
+        setSelectedProvider(provider);
+        setSearchQuery('');
+        setSearchResults([]);
+        setLastLog(`Selected provider: ${provider.title}`);
+
+        try {
+            const remotes = await SensyIr.getRemotesForProvider(provider.id);
+            setCandidateRemotes(remotes);
+            setSelectedRemoteIndex(0);
+            if (remotes.length > 0) {
+                await loadRemoteKeys(remotes[0].id);
+            } else {
+                setKeyMap({});
+                setLastLog(`No candidate remotes found for ${provider.title}`);
+            }
+        } catch (e: any) {
+            setLastLog(`Error loading remotes: ${e.message}`);
+        }
+    };
+
+    const loadRemoteKeys = async (remoteId: number) => {
+        setIsLoadingKeys(true);
+        try {
+            const keys = await SensyIr.getKeyCodes(remoteId);
+            setKeyMap(keys);
+            setLastLog(`Loaded Remote ID ${remoteId} (${Object.keys(keys).length} keys ready)`);
+        } catch (e: any) {
+            setLastLog(`Error loading keys: ${e.message}`);
+        } finally {
+            setIsLoadingKeys(false);
+        }
+    };
+
+    const handleSelectRemoteIndex = async (index: number) => {
+        setSelectedRemoteIndex(index);
+        const r = candidateRemotes[index];
+        if (r) {
+            await loadRemoteKeys(r.id);
+        }
+    };
 
     const handleRequestPermission = async () => {
         try {
@@ -57,17 +131,20 @@ export default function App() {
     };
 
     const sendKey = async (keyName: string) => {
-        const hex = activeRemote.keys[keyName];
+        const hex = keyMap[keyName];
         if (!hex) {
-            setLastLog(`Key "${keyName}" not defined in Remote ID ${activeRemote.id}`);
+            setLastLog(`Key "${keyName}" not defined in this remote`);
             return;
         }
 
+        const activeRemote = candidateRemotes[selectedRemoteIndex];
+        const bitLength = activeRemote?.bitLength || 32;
+
         setIsTransmitting(true);
-        setLastLog(`Sending ${keyName} (${hex})...`);
+        setLastLog(`Transmitting ${keyName} (${hex})...`);
         try {
-            await SensyIr.transmitNec(hex, activeRemote.bitLength);
-            setLastLog(`Sent ${keyName} [${hex}] (Remote ${activeRemote.id})`);
+            await SensyIr.transmitNec(hex, bitLength);
+            setLastLog(`Sent ${keyName} [${hex}] (Remote ID ${activeRemote?.id})`);
         } catch (err: any) {
             setLastLog(`TX Error: ${err.message}`);
         } finally {
@@ -75,22 +152,7 @@ export default function App() {
         }
     };
 
-    const autoTestAll = async () => {
-        setLastLog('Auto-testing all 7 Kerala Vision remotes (Power)...');
-        for (let i = 0; i < KERALA_VISION_REMOTES.length; i++) {
-            const r = KERALA_VISION_REMOTES[i];
-            const pwr = r.keys['POWER'];
-            if (pwr) {
-                setSelectedRemoteIndex(i);
-                setLastLog(`Testing Remote ${r.id} POWER (${pwr})...`);
-                try {
-                    await SensyIr.transmitNec(pwr, r.bitLength);
-                } catch (_) {}
-                await new Promise(res => setTimeout(res, 2000));
-            }
-        }
-        setLastLog('Auto-test cycle finished. Select the model that worked.');
-    };
+    const activeRemote = candidateRemotes[selectedRemoteIndex];
 
     return (
         <SafeAreaView style={styles.container}>
@@ -98,8 +160,8 @@ export default function App() {
             <ScrollView contentContainerStyle={styles.scroll}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <Text style={styles.title}>Kerala Vision Remote</Text>
-                    <Text style={styles.subtitle}>Xiaomi / Sensy USB IR Blaster</Text>
+                    <Text style={styles.title}>Universal STB / TV Remote</Text>
+                    <Text style={styles.subtitle}>Xiaomi / Sensy USB Blaster (SQLite lcndb.db)</Text>
                 </View>
 
                 {/* USB Status Badge */}
@@ -108,33 +170,78 @@ export default function App() {
                         <View style={[styles.statusDot, status.connected && status.hasPermission ? styles.dotGreen : styles.dotOrange]} />
                         <Text style={styles.statusText}>
                             {status.connected
-                                ? (status.hasPermission ? 'USB IR Blaster Connected' : 'USB Attached - Permission Required')
-                                : 'Blaster Disconnected (Plug OTG)'}
+                                ? (status.hasPermission ? 'USB IR Blaster Connected' : 'USB Attached - Grant Permission')
+                                : 'Blaster Disconnected (Plug OTG Cable)'}
                         </Text>
                     </View>
                     {status.connected && !status.hasPermission && (
                         <TouchableOpacity style={styles.permButton} onPress={handleRequestPermission}>
-                            <Text style={styles.permButtonText}>Grant Permission</Text>
+                            <Text style={styles.permButtonText}>Grant USB Permission</Text>
                         </TouchableOpacity>
                     )}
                 </View>
 
-                {/* Remote Model Selector */}
-                <Text style={styles.sectionTitle}>STB Remote Model (Profile):</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.modelScroll}>
-                    {KERALA_VISION_REMOTES.map((r, idx) => (
-                        <TouchableOpacity
-                            key={r.id}
-                            style={[styles.modelTab, selectedRemoteIndex === idx && styles.modelTabActive]}
-                            onPress={() => setSelectedRemoteIndex(idx)}>
-                            <Text style={[styles.modelTabText, selectedRemoteIndex === idx && styles.modelTabTextActive]}>
-                                ID {r.id} {idx === 0 ? '(Default)' : ''}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </ScrollView>
+                {/* SQLite Provider Search Input */}
+                <View style={styles.searchContainer}>
+                    <Text style={styles.sectionTitle}>Search Provider (DTH / Cable / TV):</Text>
+                    <View style={styles.searchBarRow}>
+                        <TextInput
+                            style={styles.searchInput}
+                            placeholder="e.g. Tata Play, Airtel, Kerala Vision, Sun..."
+                            placeholderTextColor="#6c7a89"
+                            value={searchQuery}
+                            onChangeText={handleSearch}
+                        />
+                        {isSearching && <ActivityIndicator size="small" color="#00bcd4" style={{ marginLeft: 8 }} />}
+                    </View>
 
-                {/* Remote Controls */}
+                    {/* Search Results Dropdown */}
+                    {searchResults.length > 0 && (
+                        <View style={styles.dropdown}>
+                            {searchResults.map(item => (
+                                <TouchableOpacity key={item.id} style={styles.dropdownItem} onPress={() => selectProvider(item)}>
+                                    <Text style={styles.dropdownItemText}>{item.title}</Text>
+                                    <Text style={styles.dropdownItemSub}>
+                                        {item.type} {item.brandTitle ? `• ${item.brandTitle}` : ''}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    )}
+                </View>
+
+                {/* Selected Provider Info */}
+                {selectedProvider && (
+                    <View style={styles.providerCard}>
+                        <Text style={styles.providerCardTitle}>{selectedProvider.title}</Text>
+                        <Text style={styles.providerCardSub}>
+                            Type: {selectedProvider.type} | Group ID: {selectedProvider.groupId}
+                        </Text>
+                    </View>
+                )}
+
+                {/* Candidate Remotes Tabs */}
+                {candidateRemotes.length > 0 && (
+                    <View style={styles.modelSection}>
+                        <Text style={styles.sectionTitle}>
+                            Candidate Remotes ({candidateRemotes.length} models found):
+                        </Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.modelScroll}>
+                            {candidateRemotes.map((r, idx) => (
+                                <TouchableOpacity
+                                    key={r.id}
+                                    style={[styles.modelTab, selectedRemoteIndex === idx && styles.modelTabActive]}
+                                    onPress={() => handleSelectRemoteIndex(idx)}>
+                                    <Text style={[styles.modelTabText, selectedRemoteIndex === idx && styles.modelTabTextActive]}>
+                                        Model {r.id} {r.powerCode ? `(${r.powerCode.slice(0, 6)}..)` : ''}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                )}
+
+                {/* Remote Keypad */}
                 <View style={styles.remoteBody}>
                     {/* Top Row: Power & Mute */}
                     <View style={styles.row}>
@@ -146,7 +253,7 @@ export default function App() {
                         </TouchableOpacity>
                     </View>
 
-                    {/* Vol & Channel Controls */}
+                    {/* Volume & Channel */}
                     <View style={styles.row}>
                         <View style={styles.column}>
                             <TouchableOpacity style={[styles.btn, styles.btnAction]} onPress={() => sendKey('VOL UP')}>
@@ -166,7 +273,7 @@ export default function App() {
                         </View>
                     </View>
 
-                    {/* Center D-Pad Navigation */}
+                    {/* D-Pad Navigation */}
                     <View style={styles.dpadContainer}>
                         <TouchableOpacity style={[styles.btn, styles.btnDpad]} onPress={() => sendKey('UP')}>
                             <Text style={styles.btnText}>▲</Text>
@@ -187,7 +294,7 @@ export default function App() {
                         </TouchableOpacity>
                     </View>
 
-                    {/* Menu & Exit */}
+                    {/* Menu & Back */}
                     <View style={styles.row}>
                         <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={() => sendKey('MENU')}>
                             <Text style={styles.btnText}>MENU</Text>
@@ -197,8 +304,8 @@ export default function App() {
                         </TouchableOpacity>
                     </View>
 
-                    {/* Numeric Keypad (0-9) */}
-                    <Text style={styles.sectionTitle}>Numeric Keys:</Text>
+                    {/* 0-9 Keypad */}
+                    <Text style={styles.sectionTitle}>Numeric Keypad:</Text>
                     <View style={styles.keypad}>
                         {['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map(num => (
                             <TouchableOpacity key={num} style={styles.keyNum} onPress={() => sendKey(num)}>
@@ -206,16 +313,11 @@ export default function App() {
                             </TouchableOpacity>
                         ))}
                     </View>
-
-                    {/* Auto-test Button */}
-                    <TouchableOpacity style={styles.autoTestBtn} onPress={autoTestAll}>
-                        <Text style={styles.autoTestBtnText}>⚡ Auto-Test All 7 Kerala Remotes</Text>
-                    </TouchableOpacity>
                 </View>
 
-                {/* Status / Log Footer */}
+                {/* Footer Log */}
                 <View style={styles.footerLog}>
-                    <Text style={styles.logTitle}>Transmission Log:</Text>
+                    <Text style={styles.logTitle}>Status & Transmission Log:</Text>
                     <Text style={styles.logText}>{lastLog}</Text>
                     {isTransmitting && <ActivityIndicator color="#00bcd4" style={{ marginTop: 6 }} />}
                 </View>
@@ -235,7 +337,7 @@ const styles = StyleSheet.create({
     },
     header: {
         alignItems: 'center',
-        marginBottom: 16
+        marginBottom: 14
     },
     title: {
         fontSize: 22,
@@ -243,7 +345,7 @@ const styles = StyleSheet.create({
         color: '#ffffff'
     },
     subtitle: {
-        fontSize: 13,
+        fontSize: 12,
         color: '#8da0b3',
         marginTop: 2
     },
@@ -251,7 +353,7 @@ const styles = StyleSheet.create({
         width: '100%',
         padding: 12,
         borderRadius: 8,
-        marginBottom: 16
+        marginBottom: 12
     },
     statusOk: {
         backgroundColor: '#133526',
@@ -297,22 +399,85 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 12
     },
-    sectionTitle: {
-        alignSelf: 'flex-start',
+    searchContainer: {
+        width: '100%',
+        marginBottom: 12
+    },
+    searchBarRow: {
+        flexDirection: 'row',
+        alignItems: 'center'
+    },
+    searchInput: {
+        flex: 1,
+        backgroundColor: '#161c24',
+        borderColor: '#263342',
+        borderWidth: 1,
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        color: '#ffffff',
+        fontSize: 14
+    },
+    dropdown: {
+        backgroundColor: '#1b232e',
+        borderRadius: 8,
+        marginTop: 4,
+        maxHeight: 200,
+        borderColor: '#263342',
+        borderWidth: 1
+    },
+    dropdownItem: {
+        padding: 10,
+        borderBottomColor: '#263342',
+        borderBottomWidth: 1
+    },
+    dropdownItemText: {
+        color: '#ffffff',
+        fontSize: 14,
+        fontWeight: '600'
+    },
+    dropdownItemSub: {
         color: '#8da0b3',
-        fontSize: 13,
+        fontSize: 11,
+        marginTop: 2
+    },
+    providerCard: {
+        width: '100%',
+        backgroundColor: '#1b232e',
+        padding: 10,
+        borderRadius: 8,
+        marginBottom: 12,
+        borderLeftColor: '#00bcd4',
+        borderLeftWidth: 4
+    },
+    providerCardTitle: {
+        color: '#ffffff',
+        fontSize: 15,
+        fontWeight: 'bold'
+    },
+    providerCardSub: {
+        color: '#8da0b3',
+        fontSize: 12,
+        marginTop: 2
+    },
+    modelSection: {
+        width: '100%',
+        marginBottom: 12
+    },
+    sectionTitle: {
+        color: '#8da0b3',
+        fontSize: 12,
         fontWeight: 'bold',
-        marginVertical: 8
+        marginBottom: 6
     },
     modelScroll: {
         flexDirection: 'row',
-        marginBottom: 16,
         width: '100%'
     },
     modelTab: {
         paddingVertical: 8,
-        paddingHorizontal: 14,
-        borderRadius: 20,
+        paddingHorizontal: 12,
+        borderRadius: 16,
         backgroundColor: '#1b232e',
         marginRight: 8
     },
@@ -379,17 +544,17 @@ const styles = StyleSheet.create({
     },
     dpadContainer: {
         alignItems: 'center',
-        marginVertical: 12
+        marginVertical: 10
     },
     btnDpad: {
         backgroundColor: '#263342',
         width: 60,
-        height: 48
+        height: 46
     },
     btnOk: {
         backgroundColor: '#00bcd4',
         width: 68,
-        height: 48,
+        height: 46,
         borderRadius: 8,
         justifyContent: 'center',
         alignItems: 'center',
@@ -405,12 +570,12 @@ const styles = StyleSheet.create({
         flexWrap: 'wrap',
         justifyContent: 'center',
         width: '100%',
-        marginVertical: 8
+        marginVertical: 6
     },
     keyNum: {
         backgroundColor: '#1f2a37',
-        width: 60,
-        height: 44,
+        width: 58,
+        height: 42,
         borderRadius: 6,
         justifyContent: 'center',
         alignItems: 'center',
@@ -421,34 +586,21 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600'
     },
-    autoTestBtn: {
-        backgroundColor: '#34495e',
-        width: '100%',
-        paddingVertical: 12,
-        borderRadius: 8,
-        alignItems: 'center',
-        marginTop: 14
-    },
-    autoTestBtnText: {
-        color: '#00bcd4',
-        fontWeight: 'bold',
-        fontSize: 14
-    },
     footerLog: {
         width: '100%',
-        marginTop: 16,
-        padding: 12,
+        marginTop: 14,
+        padding: 10,
         backgroundColor: '#121820',
         borderRadius: 8
     },
     logTitle: {
         color: '#8da0b3',
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: 'bold'
     },
     logText: {
         color: '#2bb673',
-        fontSize: 13,
+        fontSize: 12,
         marginTop: 4,
         fontFamily: 'monospace'
     }

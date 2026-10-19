@@ -16,3 +16,4 @@ class SensyIrPackage : ReactPackage {
         return emptyList()
     }
 }
+
