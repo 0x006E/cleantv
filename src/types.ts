@@ -167,3 +167,4 @@ export const PROTOCOLS: Readonly<Record<number, string>> = {
     5: 'JVC',
     6: 'SAMSUNG'
 };
+

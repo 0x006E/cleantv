@@ -78,3 +78,4 @@ runDbTests().catch(err => {
     console.error('[FAIL] DB test failed:', err);
     process.exit(1);
 });
+

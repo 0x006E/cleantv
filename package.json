@@ -36,6 +36,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "bonjour-service": "^1.4.4",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
     "typescript": "^5.5.0"
   }
 }

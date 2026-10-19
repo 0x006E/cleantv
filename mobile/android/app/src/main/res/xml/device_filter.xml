@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Xiaomi / Sensara Sensy USB Consumer IR Dongle -->
+    <usb-device vendor-id="10007" product-id="61" />
+</resources>

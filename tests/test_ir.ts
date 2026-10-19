@@ -89,3 +89,4 @@ runIrTests().catch(err => {
     console.error('[FAIL] IR test failed:', err);
     process.exit(1);
 });
+
