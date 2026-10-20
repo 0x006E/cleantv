@@ -1,0 +1,380 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Translucent sidebar dialog for AV1 STB channels and remote control operations.
+     Styled 100% following cleanyourtv's Apple TV / glass_panel convention. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#4D000000">
+
+    <LinearLayout
+        android:layout_width="380dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:layout_margin="16dp"
+        android:orientation="vertical"
+        android:background="@drawable/glass_panel"
+        android:padding="20dp"
+        android:elevation="16dp">
+
+        <!-- Header -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/remote_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="AV1 REMOTE"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="18sp"
+                    android:fontFamily="@font/outfit_medium"
+                    android:letterSpacing="-0.01" />
+
+                <TextView
+                    android:id="@+id/remote_subtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Kerala Vision (AV1)"
+                    android:textColor="#99FFFFFF"
+                    android:textSize="12sp"
+                    android:fontFamily="@font/outfit" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/btn_close_remote"
+                style="@style/TopButtonBase"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:paddingStart="0dp"
+                android:paddingEnd="0dp"
+                android:gravity="center"
+                android:text="✕"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- Segmented Tab Switcher: Channels vs Remote -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="14dp"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:id="@+id/tab_channels"
+                style="@style/TopButtonBase"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:layout_marginStart="0dp"
+                android:layout_marginEnd="6dp"
+                android:gravity="center"
+                android:text="📺 Channels"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tab_remote"
+                style="@style/TopButtonBase"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:gravity="center"
+                android:text="📱 Remote"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- Container 1: Channels List -->
+        <FrameLayout
+            android:id="@+id/channels_container"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/sidebar_channels_list"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:scrollbars="none"
+                android:overScrollMode="never" />
+        </FrameLayout>
+
+        <!-- Container 2: Tactile Remote Keypad -->
+        <ScrollView
+            android:id="@+id/remote_container"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:visibility="gone"
+            android:scrollbars="none"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:paddingTop="8dp">
+
+                <!-- Power & Mute -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:layout_marginBottom="14dp">
+
+                    <TextView
+                        android:id="@+id/btn_power"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="0dp"
+                        android:layout_marginEnd="6dp"
+                        android:gravity="center"
+                        android:text="⏻ Power"
+                        android:textColor="#EF4444"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/btn_mute"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="6dp"
+                        android:gravity="center"
+                        android:text="🔇 Mute"
+                        android:textSize="14sp" />
+                </LinearLayout>
+
+                <!-- D-Pad Navigation Ring -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:layout_marginBottom="14dp">
+
+                    <TextView
+                        android:id="@+id/btn_dpad_up"
+                        style="@style/TopButtonBase"
+                        android:layout_width="72dp"
+                        android:layout_height="38dp"
+                        android:layout_marginStart="0dp"
+                        android:gravity="center"
+                        android:text="▲"
+                        android:textSize="16sp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center"
+                        android:layout_marginTop="4dp"
+                        android:layout_marginBottom="4dp">
+
+                        <TextView
+                            android:id="@+id/btn_dpad_left"
+                            style="@style/TopButtonBase"
+                            android:layout_width="72dp"
+                            android:layout_height="42dp"
+                            android:layout_marginStart="0dp"
+                            android:layout_marginEnd="8dp"
+                            android:gravity="center"
+                            android:text="◀"
+                            android:textSize="16sp" />
+
+                        <TextView
+                            android:id="@+id/btn_dpad_ok"
+                            style="@style/TopButtonBase"
+                            android:layout_width="84dp"
+                            android:layout_height="42dp"
+                            android:layout_marginStart="0dp"
+                            android:gravity="center"
+                            android:text="OK"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp"
+                            android:fontFamily="@font/outfit_medium" />
+
+                        <TextView
+                            android:id="@+id/btn_dpad_right"
+                            style="@style/TopButtonBase"
+                            android:layout_width="72dp"
+                            android:layout_height="42dp"
+                            android:layout_marginStart="8dp"
+                            android:gravity="center"
+                            android:text="▶"
+                            android:textSize="16sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/btn_dpad_down"
+                        style="@style/TopButtonBase"
+                        android:layout_width="72dp"
+                        android:layout_height="38dp"
+                        android:layout_marginStart="0dp"
+                        android:gravity="center"
+                        android:text="▼"
+                        android:textSize="16sp" />
+                </LinearLayout>
+
+                <!-- Rockers: Vol +/-, Ch +/- and Recall -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:layout_marginBottom="14dp">
+
+                    <TextView
+                        android:id="@+id/btn_vol_up"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="0dp"
+                        android:gravity="center"
+                        android:text="VOL +"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/btn_recall"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="6dp"
+                        android:layout_marginEnd="6dp"
+                        android:gravity="center"
+                        android:text="RECALL"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/btn_ch_up"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="0dp"
+                        android:gravity="center"
+                        android:text="CH +"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:layout_marginBottom="14dp">
+
+                    <TextView
+                        android:id="@+id/btn_vol_down"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="0dp"
+                        android:gravity="center"
+                        android:text="VOL −"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/btn_menu"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="6dp"
+                        android:layout_marginEnd="6dp"
+                        android:gravity="center"
+                        android:text="MENU"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/btn_ch_down"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="0dp"
+                        android:gravity="center"
+                        android:text="CH −"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <!-- Numeric Keypad 3x4 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="4dp">
+                        <TextView android:id="@+id/btn_num_1" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="1" />
+                        <TextView android:id="@+id/btn_num_2" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:gravity="center" android:text="2" />
+                        <TextView android:id="@+id/btn_num_3" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="3" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="4dp">
+                        <TextView android:id="@+id/btn_num_4" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="4" />
+                        <TextView android:id="@+id/btn_num_5" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:gravity="center" android:text="5" />
+                        <TextView android:id="@+id/btn_num_6" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="6" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginBottom="4dp">
+                        <TextView android:id="@+id/btn_num_7" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="7" />
+                        <TextView android:id="@+id/btn_num_8" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:gravity="center" android:text="8" />
+                        <TextView android:id="@+id/btn_num_9" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="9" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+                        <TextView android:id="@+id/btn_exit" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="EXIT" android:textSize="11sp" />
+                        <TextView android:id="@+id/btn_num_0" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:gravity="center" android:text="0" />
+                        <TextView android:id="@+id/btn_back" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="BACK" android:textSize="11sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- Status line -->
+        <TextView
+            android:id="@+id/remote_status_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:textColor="#80FFFFFF"
+            android:textSize="12sp"
+            android:fontFamily="@font/outfit"
+            android:singleLine="true" />
+    </LinearLayout>
+</FrameLayout>

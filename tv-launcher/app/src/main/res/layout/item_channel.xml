@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:paddingStart="8dp"
+    android:paddingEnd="8dp"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <FrameLayout
+        android:id="@+id/channel_card"
+        android:layout_width="180dp"
+        android:layout_height="100dp"
+        android:background="@drawable/channel_card_bg"
+        android:focusable="true"
+        android:clickable="true">
+
+        <!-- Genre Pill -->
+        <TextView
+            android:id="@+id/channel_genre"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:layout_marginStart="10dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/genre_badge_bg"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:text="SPORTS"
+            android:textColor="#A1A1AA"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.05"
+            android:textAllCaps="true" />
+
+        <!-- LCN Badge -->
+        <TextView
+            android:id="@+id/channel_lcn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_marginEnd="10dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/lcn_badge_bg"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:text="455"
+            android:textColor="#38BDF8"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:fontFamily="@font/outfit_medium" />
+
+        <!-- Channel Logo -->
+        <ImageView
+            android:id="@+id/channel_logo"
+            android:layout_width="64dp"
+            android:layout_height="42dp"
+            android:layout_gravity="center"
+            android:layout_marginTop="1dp"
+            android:scaleType="fitCenter"
+            android:contentDescription="@null"
+            android:visibility="gone" />
+
+        <!-- Channel Name -->
+        <TextView
+            android:id="@+id/channel_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="8dp"
+            android:gravity="center_horizontal"
+            android:text="Star Sports 1 HD"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:fontFamily="@font/outfit_medium"
+            android:singleLine="true"
+            android:ellipsize="end" />
+    </FrameLayout>
+</FrameLayout>
+

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One row of the Channels list in the sidebar: matches item_input.xml convention -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="44dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="14dp"
+    android:paddingEnd="14dp"
+    android:layout_marginBottom="4dp"
+    android:background="@drawable/input_row_bg"
+    android:focusable="true"
+    android:clickable="true">
+
+    <TextView
+        android:id="@+id/channel_lcn"
+        android:layout_width="38dp"
+        android:layout_height="wrap_content"
+        android:textColor="@drawable/pill_text_mid"
+        android:textSize="13sp"
+        android:fontFamily="@font/outfit_medium"
+        android:singleLine="true" />
+
+    <ImageView
+        android:id="@+id/channel_logo"
+        android:layout_width="28dp"
+        android:layout_height="22dp"
+        android:layout_marginStart="4dp"
+        android:layout_marginEnd="4dp"
+        android:scaleType="fitCenter"
+        android:contentDescription="@null"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/channel_name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="6dp"
+        android:layout_marginEnd="8dp"
+        android:textColor="@drawable/pill_text"
+        android:duplicateParentState="true"
+        android:textSize="15sp"
+        android:fontFamily="@font/outfit_medium"
+        android:singleLine="true"
+        android:ellipsize="end" />
+
+    <TextView
+        android:id="@+id/channel_genre"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@drawable/pill_text_dim"
+        android:duplicateParentState="true"
+        android:textSize="11sp"
+        android:fontFamily="@font/outfit"
+        android:letterSpacing="0.04" />
+</LinearLayout>
+

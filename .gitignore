@@ -21,8 +21,18 @@ devenv.local.yaml
 
 # Android & Gradle
 .gradle/
+**/.gradle/
 build/
+**/build/
 app/build/
+**/app/build/
 *.apk
 *.aab
+*.idsig
 local.properties
+**/local.properties
+.android/
+**/.android/
+mobile_backup/
+cleanyourtv-upstream/
+scratch/

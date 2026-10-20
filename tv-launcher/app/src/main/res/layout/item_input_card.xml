@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:paddingStart="6dp"
+    android:paddingEnd="6dp"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <FrameLayout
+        android:id="@+id/input_card"
+        android:layout_width="168dp"
+        android:layout_height="96dp"
+        android:background="@drawable/channel_card_bg"
+        android:focusable="true"
+        android:clickable="true">
+
+        <ImageView
+            android:id="@+id/input_icon"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_gravity="top|start"
+            android:layout_marginStart="14dp"
+            android:layout_marginTop="14dp"
+            android:src="@drawable/ic_input"
+            android:tint="#10B981"
+            android:contentDescription="@null" />
+
+        <TextView
+            android:id="@+id/input_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_marginEnd="10dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/genre_badge_bg"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:text="CONNECTED"
+            android:textColor="#10B981"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.05"
+            android:textAllCaps="true" />
+
+        <TextView
+            android:id="@+id/input_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingBottom="12dp"
+            android:text="AV1 (STB)"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:fontFamily="@font/outfit_medium"
+            android:singleLine="true"
+            android:ellipsize="end" />
+    </FrameLayout>
+</FrameLayout>
+
