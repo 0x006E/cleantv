@@ -1,0 +1,163 @@
+name: Build & Release CleanTV
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-tv-launcher:
+    name: Build CleanTV TV Launcher
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-tv-${{ hashFiles('tv-launcher/**/*.gradle*', 'tv-launcher/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-tv-
+
+      - name: Build Release APK
+        run: |
+          cd tv-launcher
+          chmod +x gradlew
+          ./gradlew assembleRelease --stacktrace
+
+      - name: Upload TV Launcher APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleantv-launcher-apk
+          path: tv-launcher/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+  build-mobile-companion:
+    name: Build CleanTV Mobile Companion
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'mobile/package-lock.json'
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK & NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'ndk;28.0.13004108'
+
+      - name: Install NPM Dependencies
+        run: |
+          cd mobile
+          npm ci --legacy-peer-deps || npm install
+
+      - name: Bundle React Native JavaScript
+        run: |
+          cd mobile
+          mkdir -p android/app/src/main/assets
+          npx react-native bundle --platform android --dev false \
+            --entry-file index.js \
+            --bundle-output android/app/src/main/assets/index.android.bundle \
+            --assets-dest android/app/src/main/res/
+
+      - name: Setup Gradle Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-mobile-${{ hashFiles('mobile/android/**/*.gradle*', 'mobile/android/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-mobile-
+
+      - name: Build Release APK
+        run: |
+          cd mobile/android
+          chmod +x gradlew
+          ./gradlew assembleRelease --stacktrace
+
+      - name: Upload Mobile Companion APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleantv-companion-apk
+          path: mobile/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-tv-launcher, build-mobile-companion]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download TV Launcher APK
+        uses: actions/download-artifact@v4
+        with:
+          name: cleantv-launcher-apk
+          path: release-launcher
+
+      - name: Download Mobile Companion APK
+        uses: actions/download-artifact@v4
+        with:
+          name: cleantv-companion-apk
+          path: release-companion
+
+      - name: Prepare Release Assets
+        run: |
+          TAG_NAME="${{ github.ref_name }}"
+          if [ -z "$TAG_NAME" ] || [ "$TAG_NAME" = "main" ]; then
+            TAG_NAME="v0.1"
+          fi
+          mkdir -p dist-release
+          cp release-launcher/app-release.apk dist-release/cleantv-launcher-${TAG_NAME}.apk
+          cp release-companion/app-release.apk dist-release/cleantv-companion-${TAG_NAME}.apk
+          
+          cd dist-release
+          sha256sum *.apk > sha256sums.txt
+          ls -la
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-release/*.apk
+            dist-release/sha256sums.txt
+          generate_release_notes: true
+          name: "CleanTV ${{ github.ref_name }}"
+          draft: false
+          prerelease: false
