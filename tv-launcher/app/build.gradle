@@ -3,12 +3,12 @@ plugins {
 }
 
 android {
-    namespace 'com.gathin.tvhome'
+    namespace 'dev.ntsv.cleantv'
     compileSdk 35
     buildToolsVersion '36.0.0'
 
     defaultConfig {
-        applicationId 'com.gathin.tvhome'
+        applicationId 'dev.ntsv.cleantv'
         minSdk 26
         targetSdk 34
         versionCode 5
