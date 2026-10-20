@@ -338,12 +338,13 @@ public final class TvCommandServer {
                 response.put("status", "online");
                 response.put("tvName", "CleanTV (Mi TV 4A)");
                 response.put("dongleConnected", ir.isConnected());
-                response.put("providerTitle", stbPrefs.getString("provider_title", "Kerala Vision Digital Network"));
-                response.put("providerId", stbPrefs.getInt("provider_id", 648));
-                response.put("remoteId", stbPrefs.getInt("remote_id", 43));
+                response.put("providerTitle", stbPrefs.getString("provider_title", ""));
+                response.put("providerId", stbPrefs.getInt("provider_id", -1));
+                response.put("remoteId", stbPrefs.getInt("remote_id", -1));
                 response.put("bitLength", stbPrefs.getInt("bit_length", 32));
                 response.put("hasCustomRemote", stbPrefs.contains("custom_keys_json"));
                 response.put("pairingRequired", true);
+                response.put("isConfigured", stbPrefs.getInt("provider_id", -1) > 0 && stbPrefs.getInt("remote_id", -1) > 0);
                 response.put("isPaired", isAuthorized(clientToken));
                 response.put("hasSessionKey", getSessionKey(clientToken) != null);
                 response.put("pairedDevicesCount", getPairedDeviceCount());

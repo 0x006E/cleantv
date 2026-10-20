@@ -102,17 +102,17 @@ public class RemoteSidebarActivity extends Activity {
         irManager = SensyIrManager.getInstance(this);
         stbPrefs = getSharedPreferences("stb_settings", Context.MODE_PRIVATE);
 
-        activeProviderId = stbPrefs.getInt("provider_id", 648);
-        activeProviderTitle = stbPrefs.getString("provider_title", "Kerala Vision Digital Network");
-        activeRemoteId = stbPrefs.getInt("remote_id", 43);
+        activeProviderId = stbPrefs.getInt("provider_id", -1);
+        activeProviderTitle = stbPrefs.getString("provider_title", "");
+        activeRemoteId = stbPrefs.getInt("remote_id", -1);
         activeRemoteBitLength = stbPrefs.getInt("bit_length", 32);
 
         TextView title = findViewById(R.id.remote_title);
         TextView subtitle = findViewById(R.id.remote_subtitle);
         statusText = findViewById(R.id.remote_status_text);
 
-        if (title != null) title.setText(activeProviderTitle);
-        if (subtitle != null) subtitle.setText("AV1 Set-Top Box · Sorted by Most Used");
+        if (title != null) title.setText(!activeProviderTitle.isEmpty() ? activeProviderTitle : "Set-Top Box");
+        if (subtitle != null) subtitle.setText(activeProviderId > 0 ? "AV1 Set-Top Box · Sorted by Most Used" : "No provider configured. Use Pairing tab to set up.");
 
         tabChannels = findViewById(R.id.tab_channels);
         tabRemote = findViewById(R.id.tab_remote);

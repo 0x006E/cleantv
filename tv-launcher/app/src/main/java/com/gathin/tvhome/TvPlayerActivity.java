@@ -50,10 +50,11 @@ public class TvPlayerActivity extends Activity {
     private SensyIrManager irManager;
     private final Map<String, String> keyCodes = new HashMap<>();
     private int activeRemoteBitLength = 32;
-    private int activeProviderId = 43;
+    private int activeProviderId = -1;
 
     private boolean okKeyDownHandled = false;
     private boolean backDownReceived = false;
+    private long lastBackPressTime = 0;
     private final Runnable longPressOkRunnable = () -> {
         okKeyDownHandled = true;
         openRemoteSidebar();
@@ -62,6 +63,14 @@ public class TvPlayerActivity extends Activity {
     private void transmitKey(String keyName, String displayLabel) {
         String hex = keyCodes.get(keyName);
         if (hex == null && "OK".equals(keyName)) hex = keyCodes.get("SELECT");
+        if (hex == null && "BACK".equals(keyName)) {
+            for (String alias : new String[]{"RETURN", "EXIT", "LAST", "PREV"}) {
+                if (keyCodes.containsKey(alias)) {
+                    hex = keyCodes.get(alias);
+                    break;
+                }
+            }
+        }
         if (hex != null && !hex.isEmpty()) {
             showOsd(displayLabel, "IR " + keyName, 1200);
             irManager.transmitNecAsync(hex, activeRemoteBitLength, null);
@@ -167,10 +176,11 @@ public class TvPlayerActivity extends Activity {
     private void loadIrSettings() {
         new Thread(() -> {
             SharedPreferences sp = getSharedPreferences("stb_settings", Context.MODE_PRIVATE);
-            activeProviderId = sp.getInt("provider_id", 648);
-            int remoteId = sp.getInt("remote_id", 43);
+            activeProviderId = sp.getInt("provider_id", -1);
+            int remoteId = sp.getInt("remote_id", -1);
             activeRemoteBitLength = sp.getInt("bit_length", 32);
 
+            if (remoteId <= 0) return;
             LcnDatabaseHelper db = LcnDatabaseHelper.getInstance(this);
             Map<String, String> codes = db.getKeyCodes(remoteId);
             String customJson = sp.getString("custom_keys_json", null);
@@ -313,7 +323,7 @@ public class TvPlayerActivity extends Activity {
             }
         }
 
-        // Back key: require corresponding ACTION_DOWN to prevent orphaned ACTION_UP from closing player
+        // Back key: single click transmits STB BACK; double click within 2s exits to Launcher
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             if (action == KeyEvent.ACTION_DOWN) {
                 backDownReceived = true;
@@ -321,7 +331,14 @@ public class TvPlayerActivity extends Activity {
             } else if (action == KeyEvent.ACTION_UP) {
                 if (backDownReceived) {
                     backDownReceived = false;
-                    finish();
+                    long now = android.os.SystemClock.elapsedRealtime();
+                    if (now - lastBackPressTime < 2000) {
+                        finish();
+                    } else {
+                        lastBackPressTime = now;
+                        transmitKey("BACK", "STB BACK");
+                        showOsd("STB BACK", "Press Back again to exit to Home", 2000);
+                    }
                     return true;
                 }
                 return true; // Consume orphaned ACTION_UP from dismissed sidebar

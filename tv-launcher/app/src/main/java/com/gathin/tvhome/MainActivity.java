@@ -120,10 +120,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private RailCardsAdapter inputsAdapter;
     private RailCardsAdapter allAppsAdapter;
     private Config cfg;
-    private int activeProviderId = 648; // Default: Kerala Vision Digital Network Kochi
-    private String activeProviderTitle = "Kerala Vision Digital";
-    private int activeRemoteId = 43;
+    private int activeProviderId = -1;
+    private String activeProviderTitle = "";
+    private int activeRemoteId = -1;
     private int activeRemoteBitLength = 32;
+    private boolean wizardPromptedThisSession = false;
     private final Map<String, String> keyCodes = new HashMap<>();
     private final List<LcnDatabaseHelper.Channel> currentChannels = new ArrayList<>();
     /** Optional time-of-day backdrop (config.xml, sky_intensity); 0 keeps it hidden. */
@@ -539,10 +540,30 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             return;
         }
         android.content.SharedPreferences sp = getSharedPreferences("stb_settings", MODE_PRIVATE);
-        activeProviderId = sp.getInt("provider_id", 648);
-        activeProviderTitle = sp.getString("provider_title", "Kerala Vision Digital Network");
-        activeRemoteId = sp.getInt("remote_id", 43);
+        activeProviderId = sp.getInt("provider_id", -1);
+        activeProviderTitle = sp.getString("provider_title", "");
+        activeRemoteId = sp.getInt("remote_id", -1);
         activeRemoteBitLength = sp.getInt("bit_length", 32);
+
+        // If provider setting was not done and IR is connected, launch the setup wizard!
+        if ((activeProviderId <= 0 || activeRemoteId <= 0) && irManager.isConnected()) {
+            if (!wizardPromptedThisSession) {
+                wizardPromptedThisSession = true;
+                Intent intent = new Intent(this, StbSetupActivity.class);
+                startActivity(intent);
+            }
+            keyCodes.clear();
+            currentChannels.clear();
+            updateChannelsRail();
+            return;
+        }
+
+        if (activeProviderId <= 0 || activeRemoteId <= 0) {
+            keyCodes.clear();
+            currentChannels.clear();
+            updateChannelsRail();
+            return;
+        }
 
         new Thread(() -> {
             Map<String, String> codes = dbHelper.getKeyCodes(activeRemoteId);
@@ -581,6 +602,31 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private void updateChannelsRail() {
         if (channelsAdapter == null) return;
         List<RailCard> cards = new ArrayList<>();
+        if (activeProviderId <= 0 || activeRemoteId <= 0) {
+            cards.add(new RailCard(
+                    "card_setup_stb",
+                    "Set Up Live TV",
+                    "SETUP",
+                    null,
+                    R.drawable.ic_livetv,
+                    RailCard.ArtworkStyle.ICON_CENTER,
+                    0xFF0284C7,
+                    null,
+                    new RailCard.ActionListener() {
+                        @Override
+                        public void onClick(RailCard card) {
+                            startActivity(new Intent(MainActivity.this, StbSetupActivity.class));
+                        }
+
+                        @Override
+                        public boolean onLongClick(RailCard card) {
+                            return false;
+                        }
+                    }
+            ));
+            channelsAdapter.setItems(cards);
+            return;
+        }
         for (LcnDatabaseHelper.Channel ch : currentChannels) {
             int logoRes = getChannelLogoRes(ch.channelId);
             String displayLcn = ch.getDisplayLcn();

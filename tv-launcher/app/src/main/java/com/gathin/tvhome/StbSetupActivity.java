@@ -61,8 +61,8 @@ public class StbSetupActivity extends Activity {
 
     private final List<LcnDatabaseHelper.RemoteModel> candidateRemotes = new ArrayList<>();
     private int currentCandidateIndex = 0;
-    private int activeProviderId = 648;
-    private String activeProviderTitle = "Kerala Vision Digital Network";
+    private int activeProviderId = -1;
+    private String activeProviderTitle = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -73,10 +73,10 @@ public class StbSetupActivity extends Activity {
 
         dbHelper = LcnDatabaseHelper.getInstance(this);
         irManager = SensyIrManager.getInstance(this);
-        stbPrefs = getSharedPreferences("stb_remote_prefs", Context.MODE_PRIVATE);
+        stbPrefs = getSharedPreferences("stb_settings", Context.MODE_PRIVATE);
 
-        activeProviderId = stbPrefs.getInt("provider_id", 648);
-        activeProviderTitle = stbPrefs.getString("provider_title", "Kerala Vision Digital Network");
+        activeProviderId = stbPrefs.getInt("provider_id", -1);
+        activeProviderTitle = stbPrefs.getString("provider_title", "");
 
         btnModeProvider = findViewById(R.id.btn_mode_provider);
         btnModePair = findViewById(R.id.btn_mode_pair);
@@ -178,7 +178,7 @@ public class StbSetupActivity extends Activity {
 
         // Check if intent wants direct pairing
         boolean startPairing = getIntent().getBooleanExtra(EXTRA_START_PAIRING, false);
-        if (startPairing) {
+        if (startPairing && activeProviderId > 0) {
             loadCandidateRemotes(activeProviderId, true);
         } else {
             switchMode(false);
