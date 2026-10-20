@@ -70,8 +70,8 @@ public class HomeKeyService extends AccessibilityService {
             return true;
         }
 
-        // Long-press round center button to open translucent sidebar over AV1 / any input
-        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+        // Long-press round center button to open translucent sidebar ONLY in live input (AV1 / HDMI)
+        if (!MainActivity.isForeground && (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 if (event.getRepeatCount() == 0) {
                     isCenterLongPressed = false;
@@ -93,8 +93,8 @@ public class HomeKeyService extends AccessibilityService {
             return false;
         }
 
-        // Dedicated remote buttons that open sidebar: MENU, WINDOW, GUIDE, INFO
-        if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_WINDOW || keyCode == KeyEvent.KEYCODE_GUIDE) {
+        // Dedicated remote buttons that open sidebar in live input: MENU, WINDOW, GUIDE, INFO
+        if (!MainActivity.isForeground && (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_WINDOW || keyCode == KeyEvent.KEYCODE_GUIDE)) {
             if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
                 openSidebar();
                 return true;

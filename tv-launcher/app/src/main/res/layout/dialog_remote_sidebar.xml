@@ -579,17 +579,5 @@
             android:textSize="12sp"
             android:fontFamily="@font/outfit"
             android:singleLine="true" />
-
-        <TextView
-            android:id="@+id/btn_pair_remote_sidebar"
-            style="@style/TopButtonBase"
-            android:layout_width="match_parent"
-            android:layout_height="36dp"
-            android:layout_marginTop="8dp"
-            android:gravity="center"
-            android:text="Pair Remote / Change Provider"
-            android:textColor="#F2FFFFFF"
-            android:textSize="13sp"
-            android:fontFamily="@font/outfit_medium" />
     </LinearLayout>
 </FrameLayout>

@@ -25,6 +25,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '.
 import { KeyScannerView } from './src/components/KeyScannerView';
 import { CustomRemoteView } from './src/components/CustomRemoteView';
 import { TvBeamingService, CustomRemoteConfig } from './src/services/TvBeamingService';
+import { Logger, LogEntry } from './src/services/Logger';
+import { TvConnectionManager } from './src/services/TvConnectionManager';
 
 export default function App() {
     const [status, setStatus] = useState<DeviceStatus>({
@@ -83,6 +85,7 @@ export default function App() {
 
     const [isTransmitting, setIsTransmitting] = useState<boolean>(false);
     const [lastLog, setLastLog] = useState<string>('Ready. Connect to Mi TV or plug USB blaster.');
+    const [logEntries, setLogEntries] = useState<LogEntry[]>(() => Logger.getRecentLogs());
     const [showKeypad, setShowKeypad] = useState<boolean>(true);
 
     // Check USB state periodically
@@ -95,58 +98,62 @@ export default function App() {
         }
     };
 
-    // Check TV connection
-    const checkTv = async (ipToTest = tvIp) => {
-        setIsCheckingTv(true);
-        try {
-            const st = await TvBeamingService.checkStatus(ipToTest, authToken);
-            setIsTvConnected(true);
-            if (st.isPaired) {
-                setIsPaired(true);
-            }
-            setLastLog(`Connected: ${st.tvName || 'CleanTV'} (${st.providerTitle})`);
-            SensyIr.saveTvIp(ipToTest).catch(() => {});
-            // Load custom remote from TV if available and paired
-            if (authToken) {
-                const savedCustom = await TvBeamingService.getCustomRemote(ipToTest, authToken);
-                if (savedCustom && savedCustom.keys) {
-                    setCustomRemote(savedCustom);
-                }
-            }
-        } catch (err: any) {
-            setIsTvConnected(false);
-            setLastLog(`TV: ${err.message || 'Connection failed'}`);
-        } finally {
-            setIsCheckingTv(false);
-        }
-    };
+    const [isConnecting, setIsConnecting] = useState<boolean>(false);
 
     useEffect(() => {
-        SensyIr.getSavedTvIp().then((saved) => {
-            if (saved) {
-                setTvIp(saved);
-                checkTv(saved);
+        const unsubLogger = Logger.subscribe((entry) => {
+            setLogEntries([...Logger.getRecentLogs()]);
+            setLastLog(entry.message);
+        });
+
+        TvConnectionManager.initialize();
+        setTvIp(TvConnectionManager.getIp());
+
+        const unsubConn = TvConnectionManager.addListener({
+            onStateChange: (state, st) => {
+                const connected = state === 'CONNECTED_PAIRED' || state === 'CONNECTED_UNPAIRED';
+                const paired = state === 'CONNECTED_PAIRED';
+                setIsTvConnected(connected);
+                setIsPaired(paired);
+                if (st?.providerTitle) {
+                    setLastLog(`CleanTV connected (${st.providerTitle})`);
+                }
+            },
+            onKeyMapLoaded: (keys, title) => {
+                setKeyMap(keys);
+                if (title) setLastLog(`Loaded remote keys for ${title}`);
             }
-        }).catch(() => {});
-        SensyIr.getAuthToken().then((savedToken) => {
-            if (savedToken) {
-                setAuthToken(savedToken);
-                setIsPaired(true);
-            }
-        }).catch(() => {});
+        });
+
         SensyIr.getDatabaseVersion().then((ver) => {
             if (ver > 0) setDbVersion(ver);
         }).catch(() => {});
 
         checkUsb();
-        checkTv();
         const usbTimer = setInterval(checkUsb, 3000);
-        const tvTimer = setInterval(() => checkTv(), 8000);
+
         return () => {
+            unsubLogger();
+            unsubConn();
             clearInterval(usbTimer);
-            clearInterval(tvTimer);
+            TvConnectionManager.stopPolling();
         };
-    }, [tvIp, authToken]);
+    }, []);
+
+    const handleManualConnect = async () => {
+        if (!tvIp.trim()) {
+            Alert.alert('Missing IP', 'Please enter your CleanTV IP address.');
+            return;
+        }
+        setIsConnecting(true);
+        try {
+            await TvConnectionManager.connect(tvIp.trim());
+        } catch (e: any) {
+            Alert.alert('Connection Failed', `Could not reach CleanTV at ${tvIp}:8090. Make sure the TV is turned on and connected.`);
+        } finally {
+            setIsConnecting(false);
+        }
+    };
 
     // Initial search on launch
     useEffect(() => {
@@ -227,42 +234,30 @@ export default function App() {
     /**
      * Unified transmitter: sends via Wi-Fi to Mi TV or directly via phone USB
      */
-    const blastHexCode = async (hex: string, bitLength = 32): Promise<boolean> => {
+    const blastHexCode = async (hex: string, bitLength = 32, keyName?: string): Promise<boolean> => {
         setIsTransmitting(true);
-        setLastLog(`Transmitting ${hex}...`);
         try {
             if (isTvConnected) {
-                if (!isPaired || !authToken) {
+                if (!isPaired) {
                     Alert.alert(
                         'Pairing Required',
                         'Please pair with your CleanTV using the 6-digit code in TV Settings -> Companion App.'
                     );
-                    setShowTvConfig(true);
                     throw new Error('Device not paired with TV');
                 }
-                await TvBeamingService.blast(tvIp, hex, bitLength, authToken);
-                setLastLog(`Beamed to TV: ${hex}`);
+                const token = TvConnectionManager.getAuthToken();
+                await TvBeamingService.blast(tvIp, hex, bitLength, token);
+                Logger.tx(keyName || hex, hex, 'CleanTV');
                 return true;
             } else if (status.connected && status.hasPermission) {
                 await SensyIr.transmitNec(hex, bitLength);
-                setLastLog(`Transmitted USB: ${hex}`);
+                Logger.tx(keyName || hex, hex, 'USB Blaster');
                 return true;
             } else {
-                if (!isPaired || !authToken) {
-                    Alert.alert(
-                        'Pairing Required',
-                        'Connect and pair with your TV to send commands.'
-                    );
-                    setShowTvConfig(true);
-                    throw new Error('Device not paired with TV');
-                }
-                await TvBeamingService.blast(tvIp, hex, bitLength, authToken);
-                setIsTvConnected(true);
-                setLastLog(`Beamed to TV: ${hex}`);
-                return true;
+                throw new Error('TV not connected');
             }
         } catch (err: any) {
-            setLastLog(`TX Error: ${err.message}`);
+            Logger.error('Transmitter', `TX error: ${err.message}`);
             throw err;
         } finally {
             setIsTransmitting(false);
@@ -276,15 +271,10 @@ export default function App() {
         }
         setIsPairing(true);
         try {
-            const res = await TvBeamingService.pair(tvIp, pairingPin.trim());
-            if (res.success && res.token) {
-                setAuthToken(res.token);
-                setIsPaired(true);
-                await SensyIr.saveAuthToken(res.token);
+            const ok = await TvConnectionManager.pair(pairingPin.trim());
+            if (ok) {
                 Alert.alert('Paired Successfully', 'Your companion mobile app is securely paired with CleanTV!');
-                setLastLog('Paired with CleanTV');
                 setPairingPin('');
-                await checkTv(tvIp);
             }
         } catch (e: any) {
             Alert.alert('Pairing Failed', e.message || 'Could not pair with TV.');
@@ -294,14 +284,8 @@ export default function App() {
     };
 
     const handleUnpair = async () => {
-        if (authToken) {
-            await TvBeamingService.unpair(tvIp, authToken).catch(() => {});
-        }
-        await SensyIr.clearAuthToken().catch(() => {});
-        setAuthToken(null);
-        setIsPaired(false);
+        await TvConnectionManager.unpair();
         Alert.alert('Unpaired', 'Device has been unpaired from TV.');
-        setLastLog('Unpaired from TV');
     };
 
     const handleSyncDb = async () => {
@@ -412,7 +396,7 @@ export default function App() {
         }
 
         if (!hex) {
-            setLastLog(`Key "${keyName}" not mapped`);
+            Logger.warn('Transmitter', `Key "${keyName}" not in remote profile`);
             return;
         }
 
@@ -420,10 +404,9 @@ export default function App() {
         const bitLength = activeRemote?.bitLength || 32;
 
         try {
-            await blastHexCode(hex, bitLength);
-            setLastLog(`Sent ${keyName} [${hex}]`);
+            await blastHexCode(hex, bitLength, keyName);
         } catch (err: any) {
-            setLastLog(`TX Error: ${err.message}`);
+            Logger.error('Transmitter', `Failed to send ${keyName}: ${err.message}`);
         }
     };
 
@@ -502,16 +485,18 @@ export default function App() {
                             value={tvIp}
                             onChangeText={setTvIp}
                             placeholder="e.g. 100.97.35.51"
+                            autoCapitalize="none"
+                            autoCorrect={false}
                             style={styles.tvConfigInput}
                         />
                         <Button
                             variant="default"
                             size="sm"
                             style={styles.tvConfigBtn}
-                            onPress={() => checkTv(tvIp)}
-                            disabled={isCheckingTv}>
+                            onPress={handleManualConnect}
+                            disabled={isConnecting}>
                             <Text style={styles.btnBoldText}>
-                                {isCheckingTv ? '...' : 'Connect'}
+                                {isConnecting ? '...' : 'Connect'}
                             </Text>
                         </Button>
                     </View>
@@ -581,321 +566,450 @@ export default function App() {
                 </View>
             )}
 
-            {/* Navigation Tabs Switcher */}
-            <View style={styles.tabNavRow}>
-                <TouchableOpacity
-                    style={[styles.navTabBtn, activeTab === 'remote' && styles.navTabBtnActive]}
-                    onPress={() => setActiveTab('remote')}>
-                    <Text style={[styles.navTabText, activeTab === 'remote' && styles.navTabTextActive]}>
-                        Remote
-                    </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.navTabBtn, activeTab === 'scanner' && styles.navTabBtnActive]}
-                    onPress={() => setActiveTab('scanner')}>
-                    <Text style={[styles.navTabText, activeTab === 'scanner' && styles.navTabTextActive]}>
-                        Scanner
-                    </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.navTabBtn, activeTab === 'custom' && styles.navTabBtnActive]}
-                    onPress={() => setActiveTab('custom')}>
-                    <Text style={[styles.navTabText, activeTab === 'custom' && styles.navTabTextActive]}>
-                        Studio
-                    </Text>
-                </TouchableOpacity>
-            </View>
-
-            {/* Tab 1: Tactile Remote View */}
-            {activeTab === 'remote' && (
-                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                    {/* Pairing Gate Banner when not paired */}
-                    {!isPaired && isTvConnected && (
-                        <Card style={{ borderColor: '#0284C7', backgroundColor: '#151D2A' }}>
-                            <CardHeader>
-                                <CardTitle style={{ color: '#38BDF8' }}>Pair Companion with TV</CardTitle>
-                                <CardDescription>
-                                    Enter the 6-digit code shown on your TV screen (TV Settings &gt; Mobile Companion) to unlock remote control and channel tuning.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <View style={{ flexDirection: 'row', gap: 8 }}>
-                                    <Input
-                                        value={pairingPin}
-                                        onChangeText={setPairingPin}
-                                        placeholder="6-digit PIN"
-                                        keyboardType="number-pad"
-                                        maxLength={6}
-                                        style={{ flex: 1, letterSpacing: 4, fontFamily: 'monospace', fontWeight: 'bold' }}
-                                    />
-                                    <Button variant="default" size="sm" onPress={handlePair} disabled={isPairing}>
-                                        <Text style={{ color: '#FFFFFF', fontWeight: 'bold' }}>
-                                            {isPairing ? 'Pairing...' : 'Pair TV'}
-                                        </Text>
-                                    </Button>
-                                </View>
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    {/* Active Provider Card */}
-                    <Card>
-                        <CardHeader style={styles.providerCardHeader}>
-                            <View style={{ flex: 1 }}>
-                                <CardTitle>
-                                    {selectedProvider ? selectedProvider.title : 'Select Provider'}
-                                </CardTitle>
-                                <CardDescription>
-                                    {selectedProvider
-                                        ? `${selectedProvider.type} • ID ${selectedProvider.id} • ${candidateRemotes.length} remotes`
-                                        : 'Choose from 3,755 providers in database'}
-                                </CardDescription>
-                            </View>
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                onPress={() => setIsSearchOpen(true)}>
-                                Search
-                            </Button>
+            {/* Connection Gate: When Disconnected */}
+            {!isTvConnected ? (
+                <ScrollView contentContainerStyle={styles.scrollContent}>
+                    <Card style={{ borderColor: theme.colors.border, backgroundColor: theme.colors.card }}>
+                        <CardHeader>
+                            <CardTitle>Connect to CleanTV</CardTitle>
+                            <CardDescription>
+                                Enter your Mi TV IP address to control live TV playback, channels, and IR blaster.
+                            </CardDescription>
                         </CardHeader>
-
-                        {/* Candidate Remote Tabs */}
-                        {candidateRemotes.length > 0 && (
-                            <CardContent>
-                                <Separator style={{ marginBottom: 10 }} />
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                    <TabsList>
-                                        {candidateRemotes.map((r, idx) => (
-                                            <TabsTrigger
-                                                key={r.id}
-                                                value={idx.toString()}
-                                                activeValue={selectedRemoteIndex.toString()}
-                                                onPress={() => handleSelectRemoteIndex(idx)}>
-                                                Model #{r.id}
-                                            </TabsTrigger>
-                                        ))}
-                                    </TabsList>
-                                </ScrollView>
-                            </CardContent>
-                        )}
-                    </Card>
-
-                    {/* Tactile Remote Card */}
-                    <Card style={styles.remoteCard}>
-                        {/* Power & Mute Bar */}
-                        <View style={styles.powerRow}>
-                            <Button
-                                variant="destructive"
-                                size="icon"
-                                style={styles.powerButton}
-                                onPress={() => sendKey('POWER')}>
-                                <View style={styles.powerSymbolWrapper}>
-                                    <View style={styles.powerSymbolCircle} />
-                                    <View style={styles.powerSymbolLine} />
-                                </View>
-                            </Button>
-
-                            <View style={{ flex: 1 }} />
-
-                            <Button
-                                variant="secondary"
-                                size="icon"
-                                style={styles.muteButton}
-                                onPress={() => sendKey('VOL MUTE')}>
-                                <Text style={styles.muteBtnText}>MUTE</Text>
-                            </Button>
-                        </View>
-
-                        {/* Volume & Channel Rockers */}
-                        <View style={styles.rockersRow}>
-                            {/* Volume Rocker */}
-                            <View style={styles.rockerCard}>
-                                <TouchableOpacity
-                                    style={styles.rockerSideBtn}
-                                    activeOpacity={0.6}
-                                    onPress={() => sendKey('VOL UP')}>
-                                    <Text style={styles.rockerSymbol}>+</Text>
-                                </TouchableOpacity>
-                                <Text style={styles.rockerTag}>VOL</Text>
-                                <TouchableOpacity
-                                    style={styles.rockerSideBtn}
-                                    activeOpacity={0.6}
-                                    onPress={() => sendKey('VOL DOWN')}>
-                                    <Text style={styles.rockerSymbol}>-</Text>
-                                </TouchableOpacity>
+                        <CardContent style={{ gap: 12 }}>
+                            <View>
+                                <Text style={{ fontSize: 12, color: theme.colors.mutedForeground, marginBottom: 6 }}>
+                                    TV IP Address (Port 8090):
+                                </Text>
+                                <Input
+                                    value={tvIp}
+                                    onChangeText={setTvIp}
+                                    placeholder="e.g. 100.97.35.51"
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                    style={{ fontFamily: 'monospace' }}
+                                />
                             </View>
-
-                            {/* Channel Rocker */}
-                            <View style={styles.rockerCard}>
-                                <TouchableOpacity
-                                    style={styles.rockerSideBtn}
-                                    activeOpacity={0.6}
-                                    onPress={() => sendKey('CH UP')}>
-                                    <Text style={styles.rockerSymbol}>+</Text>
-                                </TouchableOpacity>
-                                <Text style={styles.rockerTag}>CH</Text>
-                                <TouchableOpacity
-                                    style={styles.rockerSideBtn}
-                                    activeOpacity={0.6}
-                                    onPress={() => sendKey('CH DOWN')}>
-                                    <Text style={styles.rockerSymbol}>-</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-
-                        {/* Tactile D-Pad Navigator */}
-                        <View style={styles.dpadCircle}>
-                            <TouchableOpacity
-                                style={[styles.dpadAction, styles.dpadUp]}
-                                activeOpacity={0.6}
-                                onPress={() => sendKey('UP')}>
-                                <Text style={styles.dpadArrow}>UP</Text>
-                            </TouchableOpacity>
-
-                            <View style={styles.dpadMiddle}>
-                                <TouchableOpacity
-                                    style={[styles.dpadAction, styles.dpadLeft]}
-                                    activeOpacity={0.6}
-                                    onPress={() => sendKey('LEFT')}>
-                                    <Text style={styles.dpadArrow}>LEFT</Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={styles.dpadOk}
-                                    activeOpacity={0.7}
-                                    onPress={() => sendKey('OK')}>
-                                    <Text style={styles.dpadOkText}>OK</Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={[styles.dpadAction, styles.dpadRight]}
-                                    activeOpacity={0.6}
-                                    onPress={() => sendKey('RIGHT')}>
-                                    <Text style={styles.dpadArrow}>RIGHT</Text>
-                                </TouchableOpacity>
-                            </View>
-
-                            <TouchableOpacity
-                                style={[styles.dpadAction, styles.dpadDown]}
-                                activeOpacity={0.6}
-                                onPress={() => sendKey('DOWN')}>
-                                <Text style={styles.dpadArrow}>DOWN</Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        {/* Standard Action Keys */}
-                        <View style={styles.actionRow}>
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                style={styles.actionButton}
-                                onPress={() => sendKey('MENU')}>
-                                MENU
-                            </Button>
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                style={styles.actionButton}
-                                onPress={() => sendKey('BACK')}>
-                                BACK
-                            </Button>
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                style={styles.actionButton}
-                                onPress={() => sendKey('EXIT')}>
-                                EXIT
-                            </Button>
-                        </View>
-
-                        {/* Extra STB Features: RECALL / AUDIO / SUBTITLE */}
-                        <View style={[styles.actionRow, { marginTop: 8 }]}>
                             <Button
                                 variant="default"
-                                size="sm"
-                                style={[styles.actionButton, { backgroundColor: '#0284C7' }]}
-                                onPress={() => sendKey('RECALL')}>
-                                RECALL
+                                size="default"
+                                onPress={handleManualConnect}
+                                disabled={isConnecting}>
+                                {isConnecting ? (
+                                    <ActivityIndicator size="small" color="#FFFFFF" />
+                                ) : (
+                                    <Text style={{ color: '#FFFFFF', fontWeight: 'bold' }}>Connect to CleanTV</Text>
+                                )}
                             </Button>
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                style={styles.actionButton}
-                                onPress={() => sendKey('AUDIO')}>
-                                AUDIO
-                            </Button>
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                style={styles.actionButton}
-                                onPress={() => sendKey('SUBTITLE')}>
-                                SUBTITLE
-                            </Button>
-                        </View>
-
-                        {/* Number Pad Toggle */}
-                        <Separator style={{ marginVertical: 14 }} />
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onPress={() => setShowKeypad(!showKeypad)}>
-                            {showKeypad ? 'Hide Numeric Keypad' : 'Show Numeric Keypad'}
-                        </Button>
-
-                        {/* Number Pad 3x4 Grid */}
-                        {showKeypad && (
-                            <View style={styles.keypadGrid}>
-                                {['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map(num => (
-                                    <Button
-                                        key={num}
-                                        variant="outline"
-                                        size="default"
-                                        style={styles.keypadBtn}
-                                        onPress={() => sendKey(num)}>
-                                        <Text style={styles.keypadBtnText}>{num}</Text>
-                                    </Button>
-                                ))}
-                            </View>
-                        )}
+                        </CardContent>
                     </Card>
 
-                    {/* Console Log Footer */}
+                    {/* Communication Log */}
                     <Card style={styles.consoleCard}>
                         <View style={styles.consoleHeader}>
-                            <Text style={styles.consoleTitle}>IR TRANSMISSION LOG</Text>
-                            {isTransmitting && <ActivityIndicator size="small" color={theme.colors.primary} />}
+                            <Text style={styles.consoleTitle}>COMMUNICATION LOG</Text>
                         </View>
-                        <Text style={styles.consoleText}>$ {lastLog}</Text>
+                        {logEntries.length === 0 ? (
+                            <Text style={styles.consoleText}>$ Ready. Enter TV IP and press Connect.</Text>
+                        ) : (
+                            logEntries.slice(0, 5).map((entry, idx) => {
+                                const timeStr = new Date(entry.timestamp).toTimeString().split(' ')[0];
+                                const color =
+                                    entry.level === 'TX'
+                                        ? '#38BDF8'
+                                        : entry.level === 'ERROR'
+                                        ? '#EF4444'
+                                        : entry.level === 'WARN'
+                                        ? '#F59E0B'
+                                        : '#94A3B8';
+                                return (
+                                    <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginVertical: 1 }}>
+                                        <Text style={{ color: '#64748B', fontFamily: 'monospace', fontSize: 10 }}>{timeStr}</Text>
+                                        <Text style={{ color, fontFamily: 'monospace', fontSize: 11, fontWeight: 'bold' }}>[{entry.level}]</Text>
+                                        <Text style={{ color: '#E2E8F0', fontFamily: 'monospace', fontSize: 11, flex: 1 }} numberOfLines={1}>
+                                            {entry.message}
+                                        </Text>
+                                    </View>
+                                );
+                            })
+                        )}
                     </Card>
                 </ScrollView>
-            )}
+            ) : !isPaired ? (
+                /* Connection Gate: When Connected but Unpaired */
+                <ScrollView contentContainerStyle={styles.scrollContent}>
+                    <Card style={{ borderColor: '#0284C7', backgroundColor: '#151D2A' }}>
+                        <CardHeader>
+                            <CardTitle style={{ color: '#38BDF8' }}>Pair Companion with CleanTV</CardTitle>
+                            <CardDescription>
+                                CleanTV detected at {tvIp}! Enter the 6-digit PIN shown on your TV screen (TV Settings &gt; Mobile Companion) to securely pair.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent style={{ gap: 12 }}>
+                            <Input
+                                value={pairingPin}
+                                onChangeText={setPairingPin}
+                                placeholder="6-digit PIN"
+                                keyboardType="number-pad"
+                                maxLength={6}
+                                style={{ letterSpacing: 6, fontFamily: 'monospace', fontWeight: 'bold', fontSize: 20, textAlign: 'center' }}
+                            />
+                            <Button variant="default" size="default" onPress={handlePair} disabled={isPairing}>
+                                <Text style={{ color: '#FFFFFF', fontWeight: 'bold' }}>
+                                    {isPairing ? 'Pairing...' : 'Pair Device'}
+                                </Text>
+                            </Button>
+                            <Button variant="outline" size="sm" onPress={() => TvConnectionManager.disconnect()}>
+                                <Text style={{ color: theme.colors.mutedForeground }}>Disconnect / Change IP</Text>
+                            </Button>
+                        </CardContent>
+                    </Card>
 
-            {/* Tab 2: Key Discovery & Scanner View */}
-            {activeTab === 'scanner' && (
-                <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 10 }}>
-                    <KeyScannerView
-                        tvIp={tvIp}
-                        isTvConnected={isTvConnected}
-                        onAssignKey={handleAssignKeyFromScanner}
-                        onBlastDirect={(hex) => blastHexCode(hex)}
-                    />
-                </View>
-            )}
+                    {/* Communication Log */}
+                    <Card style={styles.consoleCard}>
+                        <View style={styles.consoleHeader}>
+                            <Text style={styles.consoleTitle}>COMMUNICATION LOG</Text>
+                        </View>
+                        {logEntries.length === 0 ? (
+                            <Text style={styles.consoleText}>$ CleanTV connected. Awaiting PIN pairing.</Text>
+                        ) : (
+                            logEntries.slice(0, 5).map((entry, idx) => {
+                                const timeStr = new Date(entry.timestamp).toTimeString().split(' ')[0];
+                                const color =
+                                    entry.level === 'TX'
+                                        ? '#38BDF8'
+                                        : entry.level === 'ERROR'
+                                        ? '#EF4444'
+                                        : entry.level === 'WARN'
+                                        ? '#F59E0B'
+                                        : '#94A3B8';
+                                return (
+                                    <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginVertical: 1 }}>
+                                        <Text style={{ color: '#64748B', fontFamily: 'monospace', fontSize: 10 }}>{timeStr}</Text>
+                                        <Text style={{ color, fontFamily: 'monospace', fontSize: 11, fontWeight: 'bold' }}>[{entry.level}]</Text>
+                                        <Text style={{ color: '#E2E8F0', fontFamily: 'monospace', fontSize: 11, flex: 1 }} numberOfLines={1}>
+                                            {entry.message}
+                                        </Text>
+                                    </View>
+                                );
+                            })
+                        )}
+                    </Card>
+                </ScrollView>
+            ) : (
+                /* Connected & Paired View */
+                <>
+                    {/* Navigation Tabs Switcher */}
+                    <View style={styles.tabNavRow}>
+                        <TouchableOpacity
+                            style={[styles.navTabBtn, activeTab === 'remote' && styles.navTabBtnActive]}
+                            onPress={() => setActiveTab('remote')}>
+                            <Text style={[styles.navTabText, activeTab === 'remote' && styles.navTabTextActive]}>
+                                Remote
+                            </Text>
+                        </TouchableOpacity>
 
-            {/* Tab 3: Custom Remote Studio */}
-            {activeTab === 'custom' && (
-                <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 10 }}>
-                    <CustomRemoteView
-                        tvIp={tvIp}
-                        isTvConnected={isTvConnected}
-                        customRemote={customRemote}
-                        onUpdateCustomRemote={setCustomRemote}
-                        onBlastDirect={(hex) => blastHexCode(hex)}
-                        onSyncToTv={handleSyncCustomRemoteToTv}
-                    />
-                </View>
+                        <TouchableOpacity
+                            style={[styles.navTabBtn, activeTab === 'scanner' && styles.navTabBtnActive]}
+                            onPress={() => setActiveTab('scanner')}>
+                            <Text style={[styles.navTabText, activeTab === 'scanner' && styles.navTabTextActive]}>
+                                Scanner
+                            </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.navTabBtn, activeTab === 'custom' && styles.navTabBtnActive]}
+                            onPress={() => setActiveTab('custom')}>
+                            <Text style={[styles.navTabText, activeTab === 'custom' && styles.navTabTextActive]}>
+                                Studio
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Tab 1: Tactile Remote View */}
+                    {activeTab === 'remote' && (
+                        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                            {/* Active Provider Card */}
+                            <Card>
+                                <CardHeader style={styles.providerCardHeader}>
+                                    <View style={{ flex: 1 }}>
+                                        <CardTitle>
+                                            {selectedProvider ? selectedProvider.title : 'Select Provider'}
+                                        </CardTitle>
+                                        <CardDescription>
+                                            {selectedProvider
+                                                ? `${selectedProvider.type} • ID ${selectedProvider.id} • ${candidateRemotes.length} remotes`
+                                                : 'Choose from 3,755 providers in database'}
+                                        </CardDescription>
+                                    </View>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onPress={() => setIsSearchOpen(true)}>
+                                        Search
+                                    </Button>
+                                </CardHeader>
+
+                                {/* Candidate Remote Tabs */}
+                                {candidateRemotes.length > 0 && (
+                                    <CardContent>
+                                        <Separator style={{ marginBottom: 10 }} />
+                                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                            <TabsList>
+                                                {candidateRemotes.map((r, idx) => (
+                                                    <TabsTrigger
+                                                        key={r.id}
+                                                        value={idx.toString()}
+                                                        activeValue={selectedRemoteIndex.toString()}
+                                                        onPress={() => handleSelectRemoteIndex(idx)}>
+                                                        Model #{r.id}
+                                                    </TabsTrigger>
+                                                ))}
+                                            </TabsList>
+                                        </ScrollView>
+                                    </CardContent>
+                                )}
+                            </Card>
+
+                            {/* Tactile Remote Card */}
+                            <Card style={styles.remoteCard}>
+                                {/* Power & Mute Bar */}
+                                <View style={styles.powerRow}>
+                                    <Button
+                                        variant="destructive"
+                                        size="icon"
+                                        style={styles.powerButton}
+                                        onPress={() => sendKey('POWER')}>
+                                        <View style={styles.powerSymbolWrapper}>
+                                            <View style={styles.powerSymbolCircle} />
+                                            <View style={styles.powerSymbolLine} />
+                                        </View>
+                                    </Button>
+
+                                    <View style={{ flex: 1 }} />
+
+                                    <Button
+                                        variant="secondary"
+                                        size="icon"
+                                        style={styles.muteButton}
+                                        onPress={() => sendKey('VOL MUTE')}>
+                                        <Text style={styles.muteIcon}>⊘</Text>
+                                    </Button>
+                                </View>
+
+                                {/* Volume & Channel Rockers */}
+                                <View style={styles.rockersRow}>
+                                    {/* Volume Rocker */}
+                                    <View style={styles.rockerCard}>
+                                        <TouchableOpacity
+                                            style={styles.rockerSideBtn}
+                                            activeOpacity={0.6}
+                                            onPress={() => sendKey('VOL UP')}>
+                                            <Text style={styles.rockerSymbol}>+</Text>
+                                        </TouchableOpacity>
+                                        <Text style={styles.rockerTag}>VOL</Text>
+                                        <TouchableOpacity
+                                            style={styles.rockerSideBtn}
+                                            activeOpacity={0.6}
+                                            onPress={() => sendKey('VOL DOWN')}>
+                                            <Text style={styles.rockerSymbol}>-</Text>
+                                        </TouchableOpacity>
+                                    </View>
+
+                                    {/* Channel Rocker */}
+                                    <View style={styles.rockerCard}>
+                                        <TouchableOpacity
+                                            style={styles.rockerSideBtn}
+                                            activeOpacity={0.6}
+                                            onPress={() => sendKey('CH UP')}>
+                                            <Text style={styles.rockerSymbol}>+</Text>
+                                        </TouchableOpacity>
+                                        <Text style={styles.rockerTag}>CH</Text>
+                                        <TouchableOpacity
+                                            style={styles.rockerSideBtn}
+                                            activeOpacity={0.6}
+                                            onPress={() => sendKey('CH DOWN')}>
+                                            <Text style={styles.rockerSymbol}>-</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+
+                                {/* Tactile D-Pad Navigator */}
+                                <View style={styles.dpadCircle}>
+                                    <TouchableOpacity
+                                        style={[styles.dpadAction, styles.dpadUp]}
+                                        activeOpacity={0.6}
+                                        onPress={() => sendKey('UP')}>
+                                        <Text style={styles.dpadArrow}>▲</Text>
+                                    </TouchableOpacity>
+
+                                    <View style={styles.dpadMiddle}>
+                                        <TouchableOpacity
+                                            style={[styles.dpadAction, styles.dpadLeft]}
+                                            activeOpacity={0.6}
+                                            onPress={() => sendKey('LEFT')}>
+                                            <Text style={styles.dpadArrow}>◀</Text>
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            style={styles.dpadOk}
+                                            activeOpacity={0.7}
+                                            onPress={() => sendKey('OK')}>
+                                            <Text style={styles.dpadOkText}>OK</Text>
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            style={[styles.dpadAction, styles.dpadRight]}
+                                            activeOpacity={0.6}
+                                            onPress={() => sendKey('RIGHT')}>
+                                            <Text style={styles.dpadArrow}>▶</Text>
+                                        </TouchableOpacity>
+                                    </View>
+
+                                    <TouchableOpacity
+                                        style={[styles.dpadAction, styles.dpadDown]}
+                                        activeOpacity={0.6}
+                                        onPress={() => sendKey('DOWN')}>
+                                        <Text style={styles.dpadArrow}>▼</Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                                {/* Standard Action Keys */}
+                                <View style={styles.actionRow}>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        style={styles.actionButton}
+                                        onPress={() => sendKey('MENU')}>
+                                        MENU
+                                    </Button>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        style={styles.actionButton}
+                                        onPress={() => sendKey('BACK')}>
+                                        BACK
+                                    </Button>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        style={styles.actionButton}
+                                        onPress={() => sendKey('EXIT')}>
+                                        EXIT
+                                    </Button>
+                                </View>
+
+                                {/* Extra STB Features: RECALL / AUDIO / SUBTITLE */}
+                                <View style={[styles.actionRow, { marginTop: 8 }]}>
+                                    <Button
+                                        variant="default"
+                                        size="sm"
+                                        style={[styles.actionButton, { backgroundColor: '#0284C7' }]}
+                                        onPress={() => sendKey('RECALL')}>
+                                        RECALL
+                                    </Button>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        style={styles.actionButton}
+                                        onPress={() => sendKey('AUDIO')}>
+                                        AUDIO
+                                    </Button>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        style={styles.actionButton}
+                                        onPress={() => sendKey('SUBTITLE')}>
+                                        SUBTITLE
+                                    </Button>
+                                </View>
+
+                                {/* Number Pad Toggle */}
+                                <Separator style={{ marginVertical: 14 }} />
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onPress={() => setShowKeypad(!showKeypad)}>
+                                    {showKeypad ? 'Hide Numeric Keypad' : 'Show Numeric Keypad'}
+                                </Button>
+
+                                {/* Number Pad 3x4 Grid */}
+                                {showKeypad && (
+                                    <View style={styles.keypadGrid}>
+                                        {['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map(num => (
+                                            <Button
+                                                key={num}
+                                                variant="outline"
+                                                size="default"
+                                                style={styles.keypadBtn}
+                                                onPress={() => sendKey(num)}>
+                                                <Text style={styles.keypadBtnText}>{num}</Text>
+                                            </Button>
+                                        ))}
+                                    </View>
+                                )}
+                            </Card>
+
+                            {/* Console Log Footer */}
+                            <Card style={styles.consoleCard}>
+                                <View style={styles.consoleHeader}>
+                                    <Text style={styles.consoleTitle}>IR TRANSMISSION LOG</Text>
+                                    {isTransmitting && <ActivityIndicator size="small" color={theme.colors.primary} />}
+                                </View>
+                                {logEntries.length === 0 ? (
+                                    <Text style={styles.consoleText}>$ Ready. Press any remote key.</Text>
+                                ) : (
+                                    logEntries.slice(0, 5).map((entry, idx) => {
+                                        const timeStr = new Date(entry.timestamp).toTimeString().split(' ')[0];
+                                        const color =
+                                            entry.level === 'TX'
+                                                ? '#38BDF8'
+                                                : entry.level === 'ERROR'
+                                                ? '#EF4444'
+                                                : entry.level === 'WARN'
+                                                ? '#F59E0B'
+                                                : '#94A3B8';
+                                        return (
+                                            <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginVertical: 1 }}>
+                                                <Text style={{ color: '#64748B', fontFamily: 'monospace', fontSize: 10 }}>{timeStr}</Text>
+                                                <Text style={{ color, fontFamily: 'monospace', fontSize: 11, fontWeight: 'bold' }}>[{entry.level}]</Text>
+                                                <Text style={{ color: '#E2E8F0', fontFamily: 'monospace', fontSize: 11, flex: 1 }} numberOfLines={1}>
+                                                    {entry.message}
+                                                </Text>
+                                            </View>
+                                        );
+                                    })
+                                )}
+                            </Card>
+                        </ScrollView>
+                    )}
+
+                    {/* Tab 2: Key Discovery & Scanner View */}
+                    {activeTab === 'scanner' && (
+                        <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 10 }}>
+                            <KeyScannerView
+                                tvIp={tvIp}
+                                isTvConnected={isTvConnected}
+                                onAssignKey={handleAssignKeyFromScanner}
+                                onBlastDirect={(hex) => blastHexCode(hex)}
+                            />
+                        </View>
+                    )}
+
+                    {/* Tab 3: Custom Remote Studio */}
+                    {activeTab === 'custom' && (
+                        <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 10 }}>
+                            <CustomRemoteView
+                                tvIp={tvIp}
+                                isTvConnected={isTvConnected}
+                                customRemote={customRemote}
+                                onUpdateCustomRemote={setCustomRemote}
+                                onBlastDirect={(hex) => blastHexCode(hex)}
+                                onSyncToTv={handleSyncCustomRemoteToTv}
+                            />
+                        </View>
+                    )}
+                </>
             )}
 
             {/* Provider Search Dialog */}
@@ -1046,7 +1160,7 @@ const styles = StyleSheet.create({
     statusDot: {
         width: 7,
         height: 7,
-        borderRadius: 4,
+        borderRadius: 0,
         marginRight: 4,
     },
     tvConfigBanner: {
@@ -1092,7 +1206,7 @@ const styles = StyleSheet.create({
     navTabBtn: {
         flex: 1,
         paddingVertical: 8,
-        borderRadius: 8,
+        borderRadius: 0,
         alignItems: 'center',
         backgroundColor: theme.colors.muted,
         borderWidth: 1,
@@ -1131,9 +1245,9 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     powerButton: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
+        width: 52,
+        height: 52,
+        borderRadius: 0,
         backgroundColor: '#ef4444',
         justifyContent: 'center',
         alignItems: 'center',
@@ -1147,9 +1261,9 @@ const styles = StyleSheet.create({
     },
     powerSymbolCircle: {
         position: 'absolute',
-        width: 22,
-        height: 22,
-        borderRadius: 11,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
         borderWidth: 2.8,
         borderColor: '#ffffff',
         borderTopColor: 'transparent',
@@ -1158,17 +1272,21 @@ const styles = StyleSheet.create({
         position: 'absolute',
         top: 0,
         width: 2.8,
-        height: 12,
+        height: 11,
         backgroundColor: '#ffffff',
-        borderRadius: 1.5,
+        borderRadius: 0,
     },
     muteButton: {
         width: 48,
         height: 48,
-        borderRadius: 24,
+        borderRadius: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     muteIcon: {
         fontSize: 20,
+        color: '#FFFFFF',
+        fontWeight: 'bold',
     },
     rockersRow: {
         flexDirection: 'row',
@@ -1180,7 +1298,7 @@ const styles = StyleSheet.create({
     rockerCard: {
         width: 76,
         height: 140,
-        borderRadius: theme.radii.lg,
+        borderRadius: 0,
         backgroundColor: theme.colors.muted,
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -1208,7 +1326,7 @@ const styles = StyleSheet.create({
     dpadCircle: {
         width: 210,
         height: 210,
-        borderRadius: 105,
+        borderRadius: 0,
         backgroundColor: theme.colors.muted,
         borderWidth: 1,
         borderColor: theme.colors.border,
@@ -1241,7 +1359,7 @@ const styles = StyleSheet.create({
     dpadOk: {
         width: 76,
         height: 76,
-        borderRadius: 38,
+        borderRadius: 0,
         backgroundColor: theme.colors.card,
         borderWidth: 1.5,
         borderColor: theme.colors.primary,

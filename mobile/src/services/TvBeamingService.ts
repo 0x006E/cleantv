@@ -7,12 +7,17 @@ import { SensyIr } from '../SensyIrNative';
 
 export interface TvStatus {
     status: string;
+    tvName?: string;
     dongleConnected: boolean;
     providerTitle: string;
     providerId: number;
     remoteId: number;
     bitLength: number;
     hasCustomRemote?: boolean;
+    pairingRequired?: boolean;
+    isPaired?: boolean;
+    hasSessionKey?: boolean;
+    pairedDevicesCount?: number;
 }
 
 export interface CustomRemoteConfig {
@@ -79,7 +84,7 @@ export const TvBeamingService = {
     async pair(tvIp: string, pin: string, clientName: string = 'Pixel 8 Companion'): Promise<{ success: boolean; token: string; message: string }> {
         const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/pair`;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
+        const timeout = setTimeout(() => controller.abort(), 15000);
 
         try {
             const cleanPin = pin.replace(/\s+/g, '').trim();
@@ -97,7 +102,13 @@ export const TvBeamingService = {
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ iv: enc.iv, data: enc.data }),
+                body: JSON.stringify({
+                    pin: cleanPin,
+                    clientName,
+                    clientId: 'pixel8_companion',
+                    iv: enc.iv,
+                    data: enc.data,
+                }),
                 signal: controller.signal,
             });
             clearTimeout(timeout);

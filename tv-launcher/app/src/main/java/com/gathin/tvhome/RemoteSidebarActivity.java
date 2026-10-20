@@ -195,11 +195,6 @@ public class RemoteSidebarActivity extends Activity {
             closeBtn.setOnClickListener(v -> finish());
         }
 
-        View pairBtn = findViewById(R.id.btn_pair_remote_sidebar);
-        if (pairBtn != null) {
-            pairBtn.setOnClickListener(v -> switchTab(2));
-        }
-
         // Setup Pairing Tab UI
         sidebarPairingProvider = findViewById(R.id.sidebar_pairing_provider);
         sidebarPairingModel = findViewById(R.id.sidebar_pairing_model);
@@ -247,11 +242,6 @@ public class RemoteSidebarActivity extends Activity {
         if (channelsContainer != null) channelsContainer.setVisibility(tabIndex == 0 ? View.VISIBLE : View.GONE);
         if (remoteContainer != null) remoteContainer.setVisibility(tabIndex == 1 ? View.VISIBLE : View.GONE);
         if (pairingContainer != null) pairingContainer.setVisibility(tabIndex == 2 ? View.VISIBLE : View.GONE);
-
-        View pairBottomBtn = findViewById(R.id.btn_pair_remote_sidebar);
-        if (pairBottomBtn != null) {
-            pairBottomBtn.setVisibility(tabIndex == 2 ? View.GONE : View.VISIBLE);
-        }
 
         if (tabIndex == 2) {
             loadCandidateRemotes();

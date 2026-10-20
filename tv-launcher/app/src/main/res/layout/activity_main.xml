@@ -157,13 +157,6 @@
                 android:orientation="horizontal">
 
                 <TextView
-                    android:id="@+id/btnRemote"
-                    style="@style/TopButton"
-                    android:text="Remote"
-                    android:drawableStart="@drawable/ic_av"
-                    android:nextFocusDown="@+id/grid" />
-
-                <TextView
                     android:id="@+id/btnInputs"
                     style="@style/TopButton"
                     android:text="@string/inputs"

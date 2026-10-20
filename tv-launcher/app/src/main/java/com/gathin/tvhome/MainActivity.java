@@ -81,6 +81,7 @@ import java.util.Set;
  */
 public class MainActivity extends Activity implements AppAdapter.TileListener {
 
+    public static volatile boolean isForeground = false;
     private static final int LAUNCHER_SETTINGS_REQUEST = 42;
     /** Tiles per row and dock slots (res/values/config.xml, columns). Set in onCreate. */
     static int COLUMNS = 4;
@@ -104,7 +105,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private boolean animations;
     private boolean advancedEffects;
     private TextView greeting;
-    private View btnRemote;
     private View btnInputs;
     private TextView btnWifi;
     private TextView shamsiDate;
@@ -329,7 +329,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
         railsAdapter = new RailsAdapter(this, railType -> {
             if (railType == RailsAdapter.RAIL_CHANNELS) {
-                openRemoteSidebar();
+                openAvInput();
             } else if (railType == RailsAdapter.RAIL_INPUTS) {
                 showInputs();
             }
@@ -369,12 +369,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
         }
 
-        btnRemote = findViewById(R.id.btnRemote);
         btnInputs = findViewById(R.id.btnInputs);
         View btnSettings = findViewById(R.id.btnSettings);
-        if (btnRemote != null) {
-            btnRemote.setOnClickListener(v -> openRemoteSidebar());
-        }
         btnInputs.setOnClickListener(v -> showInputs());
         btnWifi.setOnClickListener(v -> openNetworkPill());
         btnWifi.setOnLongClickListener(v -> {
@@ -408,19 +404,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 focusRail(RailsAdapter.RAIL_APPS);
                 return true;
             }
-            int firstButton = (btnRemote != null && btnRemote.getVisibility() == View.VISIBLE) ? R.id.btnRemote
-                    : (btnInputs.getVisibility() == View.VISIBLE ? R.id.btnInputs : R.id.btnWifi);
+            int firstButton = (btnInputs.getVisibility() == View.VISIBLE ? R.id.btnInputs : R.id.btnWifi);
             int leftButton = rtlMenuBar ? R.id.btnSettings : firstButton;
             int rightButton = rtlMenuBar ? firstButton : R.id.btnSettings;
             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return v.getId() == leftButton;
             return keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && v.getId() == rightButton;
         };
-        if (btnRemote != null) btnRemote.setOnKeyListener(pillKeys);
         btnInputs.setOnKeyListener(pillKeys);
         btnWifi.setOnKeyListener(pillKeys);
         btnSettings.setOnKeyListener(pillKeys);
         if (advancedEffects) {
-            for (View button : new View[]{btnRemote, btnInputs, btnWifi, btnSettings}) {
+            for (View button : new View[]{btnInputs, btnWifi, btnSettings}) {
                 if (button == null) continue;
                 button.setOnFocusChangeListener((view, focused) -> view.animate()
                         .scaleX(focused ? 1.04f : 1f).scaleY(focused ? 1.04f : 1f)
@@ -507,6 +501,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onResume() {
         super.onResume();
+        isForeground = true;
         promptsPaused = false;
         if (rebuildOnResume) {
             tilesReady = false;
@@ -528,51 +523,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == LAUNCHER_SETTINGS_REQUEST && resultCode == RESULT_OK) recreate();
-    }
-
-    private final Handler keyHandler = new Handler(Looper.getMainLooper());
-    private boolean isOkLongPressed = false;
-    private final Runnable okLongPressRunnable = () -> {
-        isOkLongPressed = true;
-        openRemoteSidebar();
-    };
-
-    @Override
-    public boolean dispatchKeyEvent(KeyEvent event) {
-        int keyCode = event.getKeyCode();
-        int action = event.getAction();
-        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
-            if (action == KeyEvent.ACTION_DOWN) {
-                if (event.isLongPress()) {
-                    keyHandler.removeCallbacks(okLongPressRunnable);
-                    isOkLongPressed = true;
-                    openRemoteSidebar();
-                    return true;
-                }
-                if (event.getRepeatCount() == 0) {
-                    isOkLongPressed = false;
-                    keyHandler.removeCallbacks(okLongPressRunnable);
-                    keyHandler.postDelayed(okLongPressRunnable, 350);
-                } else if (event.getRepeatCount() >= 1 && !isOkLongPressed) {
-                    isOkLongPressed = true;
-                    keyHandler.removeCallbacks(okLongPressRunnable);
-                    openRemoteSidebar();
-                    return true;
-                }
-            } else if (action == KeyEvent.ACTION_UP) {
-                keyHandler.removeCallbacks(okLongPressRunnable);
-                if (isOkLongPressed) {
-                    isOkLongPressed = false;
-                    return true; // Consume UP to suppress click on card/button
-                }
-            }
-        } else if (keyCode == KeyEvent.KEYCODE_MENU) {
-            if (action == KeyEvent.ACTION_UP) {
-                openRemoteSidebar();
-                return true;
-            }
-        }
-        return super.dispatchKeyEvent(event);
     }
 
     private void loadStbChannels() {
@@ -645,8 +595,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
                         @Override
                         public boolean onLongClick(RailCard card) {
-                            openRemoteSidebar();
-                            return true;
+                            LcnDatabaseHelper.Channel chItem = (LcnDatabaseHelper.Channel) card.payload;
+                            if (chItem != null) {
+                                boolean isFav = dbHelper.toggleFavorite(activeProviderId, chItem);
+                                Toast.makeText(MainActivity.this, (isFav ? "★ Added to Favourites: " : "Removed Favourite: ") + chItem.name, Toast.LENGTH_SHORT).show();
+                                loadStbChannels();
+                                return true;
+                            }
+                            return false;
                         }
                     }
             ));
@@ -986,6 +942,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onPause() {
         super.onPause();
+        isForeground = false;
         stopAmbientAnimation();
         heroName.animate().cancel();
         ambient.animate().cancel();

@@ -280,10 +280,11 @@ public final class TvCommandServer {
             boolean isEncryptedRequest = false;
             byte[] activeSessionKey = null;
             JSONObject decryptedBodyJson = null;
+            JSONObject rawBodyJson = null;
 
             if (body.length() > 0) {
                 try {
-                    JSONObject rawBodyJson = new JSONObject(body.toString());
+                    rawBodyJson = new JSONObject(body.toString());
                     if (rawBodyJson.has("token") && clientToken == null) {
                         clientToken = rawBodyJson.getString("token");
                     }
@@ -356,6 +357,10 @@ public final class TvCommandServer {
                     if (decryptedBodyJson.has("pin")) pin = decryptedBodyJson.getString("pin");
                     if (decryptedBodyJson.has("clientName")) clientName = decryptedBodyJson.getString("clientName");
                     if (decryptedBodyJson.has("clientId")) clientId = decryptedBodyJson.getString("clientId");
+                } else if (rawBodyJson != null) {
+                    if (rawBodyJson.has("pin")) pin = rawBodyJson.getString("pin");
+                    if (rawBodyJson.has("clientName")) clientName = rawBodyJson.getString("clientName");
+                    if (rawBodyJson.has("clientId")) clientId = rawBodyJson.getString("clientId");
                 }
 
                 boolean pinValid = isEncryptedRequest || (pin != null && validatePairingPin(pin));
