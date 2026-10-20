@@ -1,39 +1,42 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# Xiaomi Mi TV 4A (2019) Revert / Restore Script
-# ==============================================================================
 set -euo pipefail
 
-TV_IP="${1:-}"
+TV_DEVICE="${1:-100.97.35.51:5555}"
+echo "Restoring debloated packages on Mi TV 4A ($TV_DEVICE)..."
 
-if [ -z "$TV_IP" ]; then
-    echo "Usage: ./tools/restore-mitv4a.sh <TV_IP_ADDRESS>"
-    exit 1
-fi
-
-echo "==> Re-enabling PatchWall and system packages on $TV_IP..."
-adb connect "$TV_IP:5555"
-
-DEBLOAT_PKGS=(
-    "com.miui.tv.analytics"
-    "com.xiaomi.statistic"
-    "com.mitv.tvhome.atv"
-    "com.mitv.tvhome.michannel"
-    "com.mitv.tvhome.mitvplus"
-    "com.xm.webcontent"
-    "com.xiaomi.floatingframe"
-    "com.xiaomi.mitv.tvmanager"
-    "com.xiaomi.mitv.smartshare"
-    "com.mitv.milinkservice"
-    "com.google.android.tvlauncher"
-    "com.google.android.tvrecommendations"
-    "com.google.android.leanbacklauncher.recommendations"
+PACKAGES=(
+  "com.miui.tv.analytics"
+  "com.xiaomi.statistic"
+  "com.google.android.feedback"
+  "com.google.android.tv.bugreportsender"
+  "com.mitv.tvhome.atv"
+  "com.xm.webcontent"
+  "com.xiaomi.floatingframe"
+  "com.google.android.tvrecommendations"
+  "com.google.android.leanbacklauncher.recommendations"
+  "android.autoinstalls.config.xioami.dangal"
+  "co.sensara.tv.mitv"
+  "com.xiaomi.mitv.tvmanager"
+  "com.xiaomi.mitv.handbook"
+  "com.xiaomi.mitv.updateservice"
+  "com.xiaomo.tv.milegal"
+  "com.google.android.katniss"
+  "com.google.android.speech.pumpkin"
+  "com.google.android.apps.mediashell"
+  "com.mitv.milinkservice"
+  "com.xiaomi.mitv.smartshare"
+  "com.xiaomi.wfdsinkhelperservice"
+  "com.xiaomi.mimusic2"
+  "com.google.android.play.games"
+  "com.google.android.videos"
+  "com.mitv.gallery"
 )
 
-for pkg in "${DEBLOAT_PKGS[@]}"; do
-    echo "    - Re-enabling $pkg"
-    adb -s "$TV_IP:5555" shell pm enable --user 0 "$pkg" || true
+for pkg in "${PACKAGES[@]}"; do
+  echo -n "Enabling $pkg... "
+  adb -s "$TV_DEVICE" shell pm enable "$pkg" || true
 done
 
-echo "==> Restore complete."
-
+echo ""
+echo "Restore complete! Currently disabled packages:"
+adb -s "$TV_DEVICE" shell pm list packages -d
