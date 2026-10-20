@@ -38,15 +38,36 @@ public class LcnDatabaseHelper {
         ensureDatabaseCopied();
     }
 
+    public static final int BUNDLED_DB_VERSION = 435;
+
     private synchronized void ensureDatabaseCopied() {
         try {
             File dbFile = context.getDatabasePath(DB_NAME);
-            if (!dbFile.exists()) {
+            boolean needsCopy = !dbFile.exists();
+
+            if (dbFile.exists()) {
+                try (SQLiteDatabase existing = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY)) {
+                    try (Cursor c = existing.rawQuery("SELECT data_version FROM metadata LIMIT 1", null)) {
+                        if (c.moveToFirst() && c.getInt(0) < BUNDLED_DB_VERSION) {
+                            Log.i(TAG, "Upgrading on-disk DB (v" + c.getInt(0) + ") to bundled v" + BUNDLED_DB_VERSION);
+                            needsCopy = true;
+                        }
+                    }
+                } catch (Exception e) {
+                    needsCopy = true;
+                }
+            }
+
+            if (needsCopy) {
+                if (database != null && database.isOpen()) {
+                    database.close();
+                    database = null;
+                }
                 File dir = dbFile.getParentFile();
                 if (dir != null && !dir.exists()) {
                     dir.mkdirs();
                 }
-                Log.i(TAG, "Extracting " + DB_NAME + " from assets to " + dbFile.getAbsolutePath());
+                Log.i(TAG, "Extracting " + DB_NAME + " (v" + BUNDLED_DB_VERSION + ") from assets to " + dbFile.getAbsolutePath());
                 InputStream assetStream;
                 try {
                     assetStream = new java.util.zip.GZIPInputStream(context.getAssets().open(DB_NAME + ".gz"));
@@ -78,6 +99,123 @@ public class LcnDatabaseHelper {
             ensureDatabaseCopied();
         }
         return database;
+    }
+
+    public static final String SENSARA_CDN_BASE = "http://sensara-static-files.sensara.tv/lcndata";
+
+    public interface SyncListener {
+        void onProgress(String status);
+        void onSuccess(int newVersion, String message);
+        void onError(String error);
+    }
+
+    public int getDatabaseVersion() {
+        SQLiteDatabase db = getDb();
+        if (db == null) return 0;
+        try (Cursor c = db.rawQuery("SELECT data_version FROM metadata LIMIT 1", null)) {
+            if (c.moveToFirst()) return c.getInt(0);
+        } catch (Exception ignored) {}
+        return 0;
+    }
+
+    public void syncDatabaseFromInternet(String customUrl, SyncListener listener) {
+        new Thread(() -> {
+            try {
+                if (listener != null) listener.onProgress("Connecting to update server...");
+                String downloadUrl;
+                int targetVersion = 0;
+
+                if (customUrl != null && !customUrl.trim().isEmpty()) {
+                    downloadUrl = customUrl.trim();
+                } else {
+                    int currentVersion = getDatabaseVersion();
+                    if (listener != null) listener.onProgress("Probing CDN for updates (current: v" + currentVersion + ")...");
+                    int latestVersion = currentVersion;
+                    int low = currentVersion;
+                    int high = 550;
+                    while (low <= high) {
+                        int mid = (low + high) / 2;
+                        try {
+                            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(SENSARA_CDN_BASE + "/lcndb-v" + mid + ".db").openConnection();
+                            conn.setRequestMethod("HEAD");
+                            conn.setConnectTimeout(4000);
+                            conn.setReadTimeout(4000);
+                            int code = conn.getResponseCode();
+                            conn.disconnect();
+                            if (code == 200) {
+                                latestVersion = mid;
+                                low = mid + 1;
+                            } else {
+                                high = mid - 1;
+                            }
+                        } catch (Exception e) {
+                            high = mid - 1;
+                        }
+                    }
+
+                    if (latestVersion <= currentVersion && currentVersion > 0) {
+                        if (listener != null) listener.onSuccess(currentVersion, "Database is already at latest version (v" + currentVersion + ").");
+                        return;
+                    }
+                    targetVersion = latestVersion;
+                    downloadUrl = SENSARA_CDN_BASE + "/lcndb-v" + latestVersion + ".db";
+                }
+
+                if (listener != null) listener.onProgress("Downloading database update...");
+                File dbFile = context.getDatabasePath(DB_NAME);
+                File tmpFile = new File(dbFile.getAbsolutePath() + ".tmp");
+
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(downloadUrl).openConnection();
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(15000);
+                if (conn.getResponseCode() != 200) {
+                    throw new Exception("HTTP " + conn.getResponseCode() + " from " + downloadUrl);
+                }
+
+                try (InputStream in = conn.getInputStream();
+                     OutputStream out = new FileOutputStream(tmpFile)) {
+                    byte[] buffer = new byte[32768];
+                    int read;
+                    while ((read = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, read);
+                    }
+                    out.flush();
+                }
+                conn.disconnect();
+
+                if (listener != null) listener.onProgress("Verifying downloaded database...");
+                int ver = 0;
+                try (SQLiteDatabase testDb = SQLiteDatabase.openDatabase(tmpFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY)) {
+                    try (Cursor c = testDb.rawQuery("SELECT data_version FROM metadata LIMIT 1", null)) {
+                        if (c.moveToFirst()) ver = c.getInt(0);
+                    }
+                }
+
+                synchronized (this) {
+                    if (database != null && database.isOpen()) {
+                        database.close();
+                        database = null;
+                    }
+                    if (dbFile.exists()) {
+                        dbFile.delete();
+                    }
+                    if (!tmpFile.renameTo(dbFile)) {
+                        throw new Exception("Failed to rename temporary database file");
+                    }
+                    ensureDatabaseCopied();
+                }
+
+                int finalVer = ver > 0 ? ver : targetVersion;
+                if (listener != null) {
+                    listener.onSuccess(finalVer, "Successfully updated database to v" + finalVer + "!");
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Database sync failed", e);
+                if (listener != null) {
+                    listener.onError("Sync failed: " + e.getMessage());
+                }
+            }
+        }).start();
     }
 
     // --- Data Models ---
@@ -121,6 +259,8 @@ public class LcnDatabaseHelper {
         public final String language;
         public final int channelId;
         public final String imageUrl;
+        public boolean isFavorite = false;
+        public String customLcn = null;
 
         public Channel(String lcn, String name, String genre, String language, int channelId, String imageUrl) {
             this.lcn = lcn;
@@ -133,6 +273,10 @@ public class LcnDatabaseHelper {
 
         public Channel(String lcn, String name, String genre, String language) {
             this(lcn, name, genre, language, 0, "");
+        }
+
+        public String getDisplayLcn() {
+            return (customLcn != null && !customLcn.trim().isEmpty()) ? customLcn.trim() : lcn;
         }
     }
 
@@ -280,6 +424,53 @@ public class LcnDatabaseHelper {
         return map;
     }
 
+    private android.content.SharedPreferences getUserPrefs() {
+        return context.getSharedPreferences("user_channel_overrides", Context.MODE_PRIVATE);
+    }
+
+    public boolean isFavorite(int providerId, int channelId, String lcn) {
+        android.content.SharedPreferences sp = getUserPrefs();
+        if (channelId > 0 && sp.contains("fav_" + providerId + "_" + channelId)) {
+            return sp.getBoolean("fav_" + providerId + "_" + channelId, false);
+        }
+        return sp.getBoolean("fav_" + providerId + "_lcn_" + lcn, false);
+    }
+
+    public void setFavorite(int providerId, int channelId, String lcn, boolean isFav) {
+        android.content.SharedPreferences.Editor ed = getUserPrefs().edit();
+        if (channelId > 0) {
+            ed.putBoolean("fav_" + providerId + "_" + channelId, isFav);
+        }
+        ed.putBoolean("fav_" + providerId + "_lcn_" + lcn, isFav);
+        ed.apply();
+    }
+
+    public boolean toggleFavorite(int providerId, Channel ch) {
+        boolean newState = !isFavorite(providerId, ch.channelId, ch.lcn);
+        ch.isFavorite = newState;
+        setFavorite(providerId, ch.channelId, ch.lcn, newState);
+        return newState;
+    }
+
+    public String getCustomLcn(int providerId, int channelId, String defaultLcn) {
+        android.content.SharedPreferences sp = getUserPrefs();
+        if (channelId > 0 && sp.contains("lcn_" + providerId + "_" + channelId)) {
+            return sp.getString("lcn_" + providerId + "_" + channelId, defaultLcn);
+        }
+        return defaultLcn;
+    }
+
+    public void setCustomLcn(int providerId, int channelId, String newLcn) {
+        if (channelId <= 0) return;
+        android.content.SharedPreferences.Editor ed = getUserPrefs().edit();
+        if (newLcn == null || newLcn.trim().isEmpty()) {
+            ed.remove("lcn_" + providerId + "_" + channelId);
+        } else {
+            ed.putString("lcn_" + providerId + "_" + channelId, newLcn.trim());
+        }
+        ed.apply();
+    }
+
     public List<Channel> getChannelsForProvider(int providerId, int limit) {
         List<Channel> list = new ArrayList<>();
         SQLiteDatabase db = getDb();
@@ -293,26 +484,60 @@ public class LcnDatabaseHelper {
 
         try (Cursor c = db.rawQuery(sql, new String[]{String.valueOf(providerId), String.valueOf(limit)})) {
             while (c.moveToNext()) {
-                list.add(new Channel(
-                        c.getString(0),
-                        c.getString(1),
-                        c.getString(2) != null ? c.getString(2) : "General",
-                        c.getString(3) != null ? c.getString(3) : "",
-                        c.getInt(4),
-                        c.getString(5) != null ? c.getString(5) : ""
-                ));
+                String origLcn = c.getString(0);
+                String name = c.getString(1);
+                String genre = c.getString(2) != null ? c.getString(2) : "General";
+                String language = c.getString(3) != null ? c.getString(3) : "";
+                int channelId = c.getInt(4);
+                String image = c.getString(5) != null ? c.getString(5) : "";
+
+                Channel ch = new Channel(origLcn, name, genre, language, channelId, image);
+                ch.customLcn = getCustomLcn(providerId, channelId, origLcn);
+                ch.isFavorite = isFavorite(providerId, channelId, origLcn);
+                list.add(ch);
             }
         } catch (Exception e) {
             Log.e(TAG, "getChannelsForProvider error", e);
         }
 
-        // If this provider (e.g. regional cable operator like Kerala Vision) has no bundled channels
-        // in offline lcndb.db, fall back to default lineup (provider 43) so channels are always available.
-        if (list.isEmpty() && providerId != 43) {
-            return getChannelsForProvider(43, limit);
-        }
+        // Sort:
+        // 1. Favourites foremost!
+        // 2. High usage count
+        // 3. Display LCN numeric
+        android.content.SharedPreferences stbPrefs = context.getSharedPreferences("stb_settings", Context.MODE_PRIVATE);
+        java.util.Collections.sort(list, (a, b) -> {
+            if (a.isFavorite != b.isFavorite) {
+                return a.isFavorite ? -1 : 1; // Favourites come first
+            }
+            int useA = stbPrefs.getInt("ch_use_" + providerId + "_" + a.getDisplayLcn(), 0);
+            int useB = stbPrefs.getInt("ch_use_" + providerId + "_" + b.getDisplayLcn(), 0);
+            if (useA != useB) {
+                return Integer.compare(useB, useA); // Higher usage comes next
+            }
+            try {
+                return Integer.compare(Integer.parseInt(a.getDisplayLcn()), Integer.parseInt(b.getDisplayLcn()));
+            } catch (Exception e) {
+                return a.getDisplayLcn().compareTo(b.getDisplayLcn());
+            }
+        });
 
         return list;
+    }
+
+    public List<Channel> filterChannels(List<Channel> source, String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return new ArrayList<>(source);
+        }
+        String q = query.trim().toLowerCase(java.util.Locale.ROOT);
+        List<Channel> filtered = new ArrayList<>();
+        for (Channel ch : source) {
+            if (ch.name.toLowerCase(java.util.Locale.ROOT).contains(q) ||
+                ch.getDisplayLcn().toLowerCase(java.util.Locale.ROOT).contains(q) ||
+                (ch.genre != null && ch.genre.toLowerCase(java.util.Locale.ROOT).contains(q))) {
+                filtered.add(ch);
+            }
+        }
+        return filtered;
     }
 
     private static String mapKeyIdToName(int keyId) {

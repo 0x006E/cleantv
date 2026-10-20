@@ -78,7 +78,7 @@ export function KeyScannerView({
             {/* Header / Intro Card */}
             <Card>
                 <CardHeader>
-                    <CardTitle>⚡ STB Key Discovery & Scanner</CardTitle>
+                    <CardTitle>STB Key Discovery &amp; Scanner</CardTitle>
                     <CardDescription>
                         Test missing commands against your STB. When your STB reacts, lock it in!
                     </CardDescription>
@@ -143,7 +143,7 @@ export function KeyScannerView({
                                     style={styles.testBtn}
                                     onPress={() => handleTestCandidate(cand)}
                                     disabled={isTesting}>
-                                    <Text style={styles.btnText}>Test ⚡</Text>
+                                    <Text style={styles.btnText}>Test</Text>
                                 </Button>
                                 <Button
                                     variant="default"
@@ -153,7 +153,7 @@ export function KeyScannerView({
                                         onAssignKey(selectedCategory, cand.hex);
                                         Alert.alert('Key Assigned', `Assigned ${cand.hex} to ${selectedCategory}!`);
                                     }}>
-                                    <Text style={styles.btnText}>Assign ✓</Text>
+                                    <Text style={styles.btnText}>Assign</Text>
                                 </Button>
                             </View>
                         </View>
@@ -186,7 +186,7 @@ export function KeyScannerView({
                                 size="sm"
                                 style={styles.stepBtn}
                                 onPress={handlePrevStep}>
-                                <Text style={styles.btnText}>◀ Prev (-1)</Text>
+                                <Text style={styles.btnText}>Prev (-1)</Text>
                             </Button>
                             <Button
                                 variant="destructive"
@@ -194,14 +194,14 @@ export function KeyScannerView({
                                 style={styles.blastBtn}
                                 onPress={handleTestStepper}
                                 disabled={isTesting}>
-                                <Text style={styles.blastBtnText}>Blast on TV ⚡</Text>
+                                <Text style={styles.blastBtnText}>Blast on TV</Text>
                             </Button>
                             <Button
                                 variant="outline"
                                 size="sm"
                                 style={styles.stepBtn}
                                 onPress={handleNextStep}>
-                                <Text style={styles.btnText}>Next (+1) ▶</Text>
+                                <Text style={styles.btnText}>Next (+1)</Text>
                             </Button>
                         </View>
 
@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
     categoryButton: {
         paddingHorizontal: 12,
         paddingVertical: 6,
-        borderRadius: 8,
+        borderRadius: 0,
         backgroundColor: theme.colors.muted,
         borderWidth: 1,
         borderColor: theme.colors.border,
@@ -330,7 +330,8 @@ const styles = StyleSheet.create({
     assignBtn: {
         paddingHorizontal: 10,
         height: 32,
-        backgroundColor: '#10B981',
+        backgroundColor: theme.colors.primary,
+        borderRadius: 0,
     },
     btnText: {
         fontSize: 12,
@@ -375,11 +376,13 @@ const styles = StyleSheet.create({
     stepBtn: {
         flex: 1,
         height: 40,
+        borderRadius: 0,
     },
     blastBtn: {
         flex: 1.4,
         height: 44,
         backgroundColor: '#F43F5E',
+        borderRadius: 0,
     },
     blastBtnText: {
         fontSize: 13,
@@ -395,17 +398,19 @@ const styles = StyleSheet.create({
     assignInput: {
         flex: 1,
         height: 40,
+        borderRadius: 0,
     },
     lockInBtn: {
         height: 40,
         paddingHorizontal: 16,
-        backgroundColor: '#10B981',
+        backgroundColor: theme.colors.primary,
+        borderRadius: 0,
     },
     statusBox: {
         marginTop: 12,
         padding: 10,
         backgroundColor: theme.colors.muted,
-        borderRadius: 8,
+        borderRadius: 0,
         alignItems: 'center',
     },
     statusBoxText: {

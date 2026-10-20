@@ -38,6 +38,17 @@ export default function App() {
     const [isCheckingTv, setIsCheckingTv] = useState<boolean>(false);
     const [showTvConfig, setShowTvConfig] = useState<boolean>(false);
 
+    // Secure TV Pairing & Auth Token
+    const [authToken, setAuthToken] = useState<string | null>(null);
+    const [isPaired, setIsPaired] = useState<boolean>(false);
+    const [pairingPin, setPairingPin] = useState<string>('');
+    const [isPairing, setIsPairing] = useState<boolean>(false);
+
+    // Database Sync
+    const [dbVersion, setDbVersion] = useState<number>(435);
+    const [customDbUrl, setCustomDbUrl] = useState<string>('');
+    const [isSyncingDb, setIsSyncingDb] = useState<boolean>(false);
+
     // Active screen navigation
     const [activeTab, setActiveTab] = useState<'remote' | 'scanner' | 'custom'>('remote');
 
@@ -84,18 +95,23 @@ export default function App() {
     const checkTv = async (ipToTest = tvIp) => {
         setIsCheckingTv(true);
         try {
-            const st = await TvBeamingService.checkStatus(ipToTest);
+            const st = await TvBeamingService.checkStatus(ipToTest, authToken);
             setIsTvConnected(true);
-            setLastLog(`Connected to Mi TV (${st.providerTitle})`);
+            if (st.isPaired) {
+                setIsPaired(true);
+            }
+            setLastLog(`Connected: ${st.tvName || 'CleanTV'} (${st.providerTitle})`);
             SensyIr.saveTvIp(ipToTest).catch(() => {});
-            // Load custom remote from TV if available
-            const savedCustom = await TvBeamingService.getCustomRemote(ipToTest);
-            if (savedCustom && savedCustom.keys) {
-                setCustomRemote(savedCustom);
+            // Load custom remote from TV if available and paired
+            if (authToken) {
+                const savedCustom = await TvBeamingService.getCustomRemote(ipToTest, authToken);
+                if (savedCustom && savedCustom.keys) {
+                    setCustomRemote(savedCustom);
+                }
             }
         } catch (err: any) {
             setIsTvConnected(false);
-            setLastLog(`TV Error: ${err.message || 'Connection failed'}`);
+            setLastLog(`TV: ${err.message || 'Connection failed'}`);
         } finally {
             setIsCheckingTv(false);
         }
@@ -108,6 +124,16 @@ export default function App() {
                 checkTv(saved);
             }
         }).catch(() => {});
+        SensyIr.getAuthToken().then((savedToken) => {
+            if (savedToken) {
+                setAuthToken(savedToken);
+                setIsPaired(true);
+            }
+        }).catch(() => {});
+        SensyIr.getDatabaseVersion().then((ver) => {
+            if (ver > 0) setDbVersion(ver);
+        }).catch(() => {});
+
         checkUsb();
         checkTv();
         const usbTimer = setInterval(checkUsb, 3000);
@@ -116,7 +142,7 @@ export default function App() {
             clearInterval(usbTimer);
             clearInterval(tvTimer);
         };
-    }, [tvIp]);
+    }, [tvIp, authToken]);
 
     // Initial search on launch
     useEffect(() => {
@@ -202,7 +228,15 @@ export default function App() {
         setLastLog(`Transmitting ${hex}...`);
         try {
             if (isTvConnected) {
-                await TvBeamingService.blast(tvIp, hex, bitLength);
+                if (!isPaired || !authToken) {
+                    Alert.alert(
+                        'Pairing Required',
+                        'Please pair with your CleanTV using the 6-digit code in TV Settings -> Companion App.'
+                    );
+                    setShowTvConfig(true);
+                    throw new Error('Device not paired with TV');
+                }
+                await TvBeamingService.blast(tvIp, hex, bitLength, authToken);
                 setLastLog(`Beamed to TV: ${hex}`);
                 return true;
             } else if (status.connected && status.hasPermission) {
@@ -210,8 +244,15 @@ export default function App() {
                 setLastLog(`Transmitted USB: ${hex}`);
                 return true;
             } else {
-                // Try TV Wi-Fi once more
-                await TvBeamingService.blast(tvIp, hex, bitLength);
+                if (!isPaired || !authToken) {
+                    Alert.alert(
+                        'Pairing Required',
+                        'Connect and pair with your TV to send commands.'
+                    );
+                    setShowTvConfig(true);
+                    throw new Error('Device not paired with TV');
+                }
+                await TvBeamingService.blast(tvIp, hex, bitLength, authToken);
                 setIsTvConnected(true);
                 setLastLog(`Beamed to TV: ${hex}`);
                 return true;
@@ -221,6 +262,59 @@ export default function App() {
             throw err;
         } finally {
             setIsTransmitting(false);
+        }
+    };
+
+    const handlePair = async () => {
+        if (!pairingPin.trim() || pairingPin.trim().length !== 6) {
+            Alert.alert('Invalid Code', 'Please enter the 6-digit pairing PIN shown on your TV screen.');
+            return;
+        }
+        setIsPairing(true);
+        try {
+            const res = await TvBeamingService.pair(tvIp, pairingPin.trim());
+            if (res.success && res.token) {
+                setAuthToken(res.token);
+                setIsPaired(true);
+                await SensyIr.saveAuthToken(res.token);
+                Alert.alert('Paired Successfully', 'Your companion mobile app is securely paired with CleanTV!');
+                setLastLog('Paired with CleanTV');
+                setPairingPin('');
+                await checkTv(tvIp);
+            }
+        } catch (e: any) {
+            Alert.alert('Pairing Failed', e.message || 'Could not pair with TV.');
+        } finally {
+            setIsPairing(false);
+        }
+    };
+
+    const handleUnpair = async () => {
+        if (authToken) {
+            await TvBeamingService.unpair(tvIp, authToken).catch(() => {});
+        }
+        await SensyIr.clearAuthToken().catch(() => {});
+        setAuthToken(null);
+        setIsPaired(false);
+        Alert.alert('Unpaired', 'Device has been unpaired from TV.');
+        setLastLog('Unpaired from TV');
+    };
+
+    const handleSyncDb = async () => {
+        setIsSyncingDb(true);
+        try {
+            const res = await SensyIr.syncDatabase(customDbUrl.trim() || undefined);
+            if (res.success) {
+                setDbVersion(res.version);
+                Alert.alert('Database Updated', `Successfully updated LCN database to v${res.version}!`);
+                setLastLog(`Database updated to v${res.version}`);
+            } else {
+                Alert.alert('Update Info', res.message);
+            }
+        } catch (e: any) {
+            Alert.alert('Sync Error', e.message);
+        } finally {
+            setIsSyncingDb(false);
         }
     };
 
@@ -265,7 +359,12 @@ export default function App() {
     };
 
     const handleSyncCustomRemoteToTv = async () => {
-        await TvBeamingService.saveCustomRemote(tvIp, customRemote);
+        if (!isPaired || !authToken) {
+            Alert.alert('Pairing Required', 'Pair with TV first to save custom remotes.');
+            setShowTvConfig(true);
+            return;
+        }
+        await TvBeamingService.saveCustomRemote(tvIp, customRemote, authToken);
         setLastLog('Custom remote synced to Mi TV!');
     };
 
@@ -288,15 +387,15 @@ export default function App() {
                 {/* Connection Status Badges */}
                 <View style={{ flexDirection: 'row', gap: 6 }}>
                     <TouchableOpacity onPress={() => setShowTvConfig(!showTvConfig)}>
-                        <Badge variant={isTvConnected ? 'success' : 'outline'}>
+                        <Badge variant={isTvConnected ? (isPaired ? 'success' : 'warning') : 'outline'}>
                             <View
                                 style={[
                                     styles.statusDot,
-                                    { backgroundColor: isTvConnected ? '#34d399' : theme.colors.mutedForeground },
+                                    { backgroundColor: isTvConnected ? (isPaired ? '#38BDF8' : '#F59E0B') : theme.colors.mutedForeground },
                                 ]}
                             />
                             <Text style={styles.badgeText}>
-                                {isTvConnected ? 'TV Online' : 'TV Offline'}
+                                {isTvConnected ? (isPaired ? 'CleanTV Paired' : 'TV (Unpaired)') : 'TV Offline'}
                             </Text>
                         </Badge>
                     </TouchableOpacity>
@@ -306,7 +405,7 @@ export default function App() {
                             <View
                                 style={[
                                     styles.statusDot,
-                                    { backgroundColor: status.hasPermission ? '#34d399' : '#fbbf24' },
+                                    { backgroundColor: status.hasPermission ? '#38BDF8' : '#F59E0B' },
                                 ]}
                             />
                             <Text style={styles.badgeText}>USB</Text>
@@ -315,15 +414,15 @@ export default function App() {
                 </View>
             </View>
 
-            {/* TV IP Settings Dropdown */}
+            {/* TV IP & Pairing Settings Dropdown */}
             {showTvConfig && (
                 <View style={styles.tvConfigBanner}>
-                    <Text style={styles.tvConfigLabel}>Mi TV IP Address (Port 8090):</Text>
+                    <Text style={styles.tvConfigLabel}>TV Address (Port 8090):</Text>
                     <View style={styles.tvConfigRow}>
                         <Input
                             value={tvIp}
                             onChangeText={setTvIp}
-                            placeholder="e.g. 192.168.1.50"
+                            placeholder="e.g. 100.97.35.51"
                             style={styles.tvConfigInput}
                         />
                         <Button
@@ -337,6 +436,52 @@ export default function App() {
                             </Text>
                         </Button>
                     </View>
+
+                    {/* TV Companion Pairing Control */}
+                    <Separator style={{ marginVertical: 10 }} />
+                    <Text style={styles.tvConfigLabel}>Companion Security &amp; Pairing:</Text>
+                    {isPaired ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                            <Text style={{ color: '#38BDF8', fontSize: 13, fontWeight: 'bold' }}>
+                                Paired &amp; Authorized
+                            </Text>
+                            <Button variant="destructive" size="sm" onPress={handleUnpair}>
+                                <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 11 }}>Unpair TV</Text>
+                            </Button>
+                        </View>
+                    ) : (
+                        <View style={{ marginTop: 6, gap: 6 }}>
+                            <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>
+                                Enter 6-digit PIN from TV Settings &gt; Mobile Companion:
+                            </Text>
+                            <View style={{ flexDirection: 'row', gap: 6 }}>
+                                <Input
+                                    value={pairingPin}
+                                    onChangeText={setPairingPin}
+                                    placeholder="6-digit PIN"
+                                    keyboardType="number-pad"
+                                    maxLength={6}
+                                    style={{ flex: 1, letterSpacing: 4, fontFamily: 'monospace', fontWeight: 'bold' }}
+                                />
+                                <Button variant="default" size="sm" onPress={handlePair} disabled={isPairing}>
+                                    <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 12 }}>
+                                        {isPairing ? 'Pairing...' : 'Pair'}
+                                    </Text>
+                                </Button>
+                            </View>
+                        </View>
+                    )}
+
+                    {/* Database Sync Control */}
+                    <Separator style={{ marginVertical: 10 }} />
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={styles.tvConfigLabel}>Universal LCN DB: v{dbVersion}</Text>
+                        <Button variant="outline" size="sm" onPress={handleSyncDb} disabled={isSyncingDb}>
+                            <Text style={{ color: '#38BDF8', fontWeight: 'bold', fontSize: 11 }}>
+                                {isSyncingDb ? 'Syncing...' : 'Sync from CDN'}
+                            </Text>
+                        </Button>
+                    </View>
                 </View>
             )}
 
@@ -346,7 +491,7 @@ export default function App() {
                     style={[styles.navTabBtn, activeTab === 'remote' && styles.navTabBtnActive]}
                     onPress={() => setActiveTab('remote')}>
                     <Text style={[styles.navTabText, activeTab === 'remote' && styles.navTabTextActive]}>
-                        📱 Remote
+                        Remote
                     </Text>
                 </TouchableOpacity>
 
@@ -354,7 +499,7 @@ export default function App() {
                     style={[styles.navTabBtn, activeTab === 'scanner' && styles.navTabBtnActive]}
                     onPress={() => setActiveTab('scanner')}>
                     <Text style={[styles.navTabText, activeTab === 'scanner' && styles.navTabTextActive]}>
-                        ⚡ Key Scanner
+                        Scanner
                     </Text>
                 </TouchableOpacity>
 
@@ -362,7 +507,7 @@ export default function App() {
                     style={[styles.navTabBtn, activeTab === 'custom' && styles.navTabBtnActive]}
                     onPress={() => setActiveTab('custom')}>
                     <Text style={[styles.navTabText, activeTab === 'custom' && styles.navTabTextActive]}>
-                        🛠️ Custom Studio
+                        Studio
                     </Text>
                 </TouchableOpacity>
             </View>
@@ -370,6 +515,35 @@ export default function App() {
             {/* Tab 1: Tactile Remote View */}
             {activeTab === 'remote' && (
                 <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                    {/* Pairing Gate Banner when not paired */}
+                    {!isPaired && isTvConnected && (
+                        <Card style={{ borderColor: '#0284C7', backgroundColor: '#151D2A' }}>
+                            <CardHeader>
+                                <CardTitle style={{ color: '#38BDF8' }}>Pair Companion with TV</CardTitle>
+                                <CardDescription>
+                                    Enter the 6-digit code shown on your TV screen (TV Settings &gt; Mobile Companion) to unlock remote control and channel tuning.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <View style={{ flexDirection: 'row', gap: 8 }}>
+                                    <Input
+                                        value={pairingPin}
+                                        onChangeText={setPairingPin}
+                                        placeholder="6-digit PIN"
+                                        keyboardType="number-pad"
+                                        maxLength={6}
+                                        style={{ flex: 1, letterSpacing: 4, fontFamily: 'monospace', fontWeight: 'bold' }}
+                                    />
+                                    <Button variant="default" size="sm" onPress={handlePair} disabled={isPairing}>
+                                        <Text style={{ color: '#FFFFFF', fontWeight: 'bold' }}>
+                                            {isPairing ? 'Pairing...' : 'Pair TV'}
+                                        </Text>
+                                    </Button>
+                                </View>
+                            </CardContent>
+                        </Card>
+                    )}
+
                     {/* Active Provider Card */}
                     <Card>
                         <CardHeader style={styles.providerCardHeader}>
@@ -387,7 +561,7 @@ export default function App() {
                                 variant="secondary"
                                 size="sm"
                                 onPress={() => setIsSearchOpen(true)}>
-                                Search 🔍
+                                Search
                             </Button>
                         </CardHeader>
 
@@ -434,7 +608,7 @@ export default function App() {
                                 size="icon"
                                 style={styles.muteButton}
                                 onPress={() => sendKey('VOL MUTE')}>
-                                <Text style={styles.muteIcon}>🔇</Text>
+                                <Text style={styles.muteBtnText}>MUTE</Text>
                             </Button>
                         </View>
 
@@ -453,7 +627,7 @@ export default function App() {
                                     style={styles.rockerSideBtn}
                                     activeOpacity={0.6}
                                     onPress={() => sendKey('VOL DOWN')}>
-                                    <Text style={styles.rockerSymbol}>−</Text>
+                                    <Text style={styles.rockerSymbol}>-</Text>
                                 </TouchableOpacity>
                             </View>
 
@@ -463,25 +637,25 @@ export default function App() {
                                     style={styles.rockerSideBtn}
                                     activeOpacity={0.6}
                                     onPress={() => sendKey('CH UP')}>
-                                    <Text style={styles.rockerSymbol}>∧</Text>
+                                    <Text style={styles.rockerSymbol}>+</Text>
                                 </TouchableOpacity>
                                 <Text style={styles.rockerTag}>CH</Text>
                                 <TouchableOpacity
                                     style={styles.rockerSideBtn}
                                     activeOpacity={0.6}
                                     onPress={() => sendKey('CH DOWN')}>
-                                    <Text style={styles.rockerSymbol}>∨</Text>
+                                    <Text style={styles.rockerSymbol}>-</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
 
-                        {/* Circular D-Pad Navigator */}
+                        {/* Tactile D-Pad Navigator */}
                         <View style={styles.dpadCircle}>
                             <TouchableOpacity
                                 style={[styles.dpadAction, styles.dpadUp]}
                                 activeOpacity={0.6}
                                 onPress={() => sendKey('UP')}>
-                                <Text style={styles.dpadArrow}>▲</Text>
+                                <Text style={styles.dpadArrow}>UP</Text>
                             </TouchableOpacity>
 
                             <View style={styles.dpadMiddle}>
@@ -489,7 +663,7 @@ export default function App() {
                                     style={[styles.dpadAction, styles.dpadLeft]}
                                     activeOpacity={0.6}
                                     onPress={() => sendKey('LEFT')}>
-                                    <Text style={styles.dpadArrow}>◀</Text>
+                                    <Text style={styles.dpadArrow}>LEFT</Text>
                                 </TouchableOpacity>
 
                                 <TouchableOpacity
@@ -503,7 +677,7 @@ export default function App() {
                                     style={[styles.dpadAction, styles.dpadRight]}
                                     activeOpacity={0.6}
                                     onPress={() => sendKey('RIGHT')}>
-                                    <Text style={styles.dpadArrow}>▶</Text>
+                                    <Text style={styles.dpadArrow}>RIGHT</Text>
                                 </TouchableOpacity>
                             </View>
 
@@ -511,7 +685,7 @@ export default function App() {
                                 style={[styles.dpadAction, styles.dpadDown]}
                                 activeOpacity={0.6}
                                 onPress={() => sendKey('DOWN')}>
-                                <Text style={styles.dpadArrow}>▼</Text>
+                                <Text style={styles.dpadArrow}>DOWN</Text>
                             </TouchableOpacity>
                         </View>
 
@@ -547,7 +721,7 @@ export default function App() {
                                 size="sm"
                                 style={[styles.actionButton, { backgroundColor: '#0284C7' }]}
                                 onPress={() => sendKey('RECALL')}>
-                                ↶ RECALL
+                                RECALL
                             </Button>
                             <Button
                                 variant="secondary"
@@ -571,7 +745,7 @@ export default function App() {
                             variant="ghost"
                             size="sm"
                             onPress={() => setShowKeypad(!showKeypad)}>
-                            {showKeypad ? 'Hide Keypad ▴' : 'Show Numeric Keypad (0-9) ▾'}
+                            {showKeypad ? 'Hide Numeric Keypad' : 'Show Numeric Keypad'}
                         </Button>
 
                         {/* Number Pad 3x4 Grid */}

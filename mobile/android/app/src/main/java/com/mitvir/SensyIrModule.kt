@@ -65,7 +65,23 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
     private fun initDatabase() {
         try {
             val dbFile = reactContext.getDatabasePath(DB_NAME)
-            if (!dbFile.exists()) {
+            var needsCopy = !dbFile.exists()
+            if (dbFile.exists()) {
+                try {
+                    val testDb = SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READONLY)
+                    val c = testDb.rawQuery("SELECT data_version FROM metadata LIMIT 1", null)
+                    if (c.moveToFirst() && c.getInt(0) < 435) {
+                        needsCopy = true
+                    }
+                    c.close()
+                    testDb.close()
+                } catch (e: Exception) {
+                    needsCopy = true
+                }
+            }
+            if (needsCopy) {
+                database?.close()
+                database = null
                 dbFile.parentFile?.mkdirs()
                 reactContext.assets.open(DB_NAME).use { input ->
                     FileOutputStream(dbFile).use { output ->
@@ -470,6 +486,124 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
         val sp = reactContext.getSharedPreferences("tv_beaming", Context.MODE_PRIVATE)
         sp.edit().putString("tv_ip", ip).apply()
         promise.resolve(true)
+    }
+
+    @ReactMethod
+    fun getAuthToken(promise: Promise) {
+        val sp = reactContext.getSharedPreferences("tv_beaming", Context.MODE_PRIVATE)
+        promise.resolve(sp.getString("auth_token", null))
+    }
+
+    @ReactMethod
+    fun saveAuthToken(token: String, promise: Promise) {
+        val sp = reactContext.getSharedPreferences("tv_beaming", Context.MODE_PRIVATE)
+        sp.edit().putString("auth_token", token).apply()
+        promise.resolve(true)
+    }
+
+    @ReactMethod
+    fun clearAuthToken(promise: Promise) {
+        val sp = reactContext.getSharedPreferences("tv_beaming", Context.MODE_PRIVATE)
+        sp.edit().remove("auth_token").apply()
+        promise.resolve(true)
+    }
+
+    @ReactMethod
+    fun getDatabaseVersion(promise: Promise) {
+        try {
+            val db = getDb()
+            val c = db.rawQuery("SELECT data_version FROM metadata LIMIT 1", null)
+            var v = 0
+            if (c.moveToFirst()) v = c.getInt(0)
+            c.close()
+            promise.resolve(v)
+        } catch (e: Exception) {
+            promise.resolve(0)
+        }
+    }
+
+    @ReactMethod
+    fun syncDatabase(customUrl: String?, promise: Promise) {
+        Thread {
+            try {
+                val cdnBase = "http://sensara-static-files.sensara.tv/lcndata"
+                var targetUrl = customUrl?.trim()
+                var latestVer = 435
+
+                if (targetUrl.isNullOrEmpty()) {
+                    var curVer = 0
+                    try {
+                        val db = getDb()
+                        val c = db.rawQuery("SELECT data_version FROM metadata LIMIT 1", null)
+                        if (c.moveToFirst()) curVer = c.getInt(0)
+                        c.close()
+                    } catch (ignored: Exception) {}
+
+                    var low = curVer
+                    var high = 550
+                    latestVer = curVer
+                    while (low <= high) {
+                        val mid = (low + high) / 2
+                        try {
+                            val conn = java.net.URL("$cdnBase/lcndb-v$mid.db").openConnection() as java.net.HttpURLConnection
+                            conn.requestMethod = "HEAD"
+                            conn.connectTimeout = 4000
+                            conn.readTimeout = 4000
+                            if (conn.responseCode == 200) {
+                                latestVer = mid
+                                low = mid + 1
+                            } else {
+                                high = mid - 1
+                            }
+                            conn.disconnect()
+                        } catch (e: Exception) {
+                            high = mid - 1
+                        }
+                    }
+                    targetUrl = "$cdnBase/lcndb-v$latestVer.db"
+                }
+
+                val dbFile = reactContext.getDatabasePath(DB_NAME)
+                val tmpFile = java.io.File(dbFile.path + ".tmp")
+                val conn = java.net.URL(targetUrl).openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 10000
+                conn.readTimeout = 15000
+                if (conn.responseCode != 200) {
+                    throw IllegalStateException("HTTP ${conn.responseCode} from $targetUrl")
+                }
+                conn.inputStream.use { input ->
+                    FileOutputStream(tmpFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                conn.disconnect()
+
+                var ver = latestVer
+                try {
+                    val testDb = SQLiteDatabase.openDatabase(tmpFile.path, null, SQLiteDatabase.OPEN_READONLY)
+                    val c = testDb.rawQuery("SELECT data_version FROM metadata LIMIT 1", null)
+                    if (c.moveToFirst()) ver = c.getInt(0)
+                    c.close()
+                    testDb.close()
+                } catch (ignored: Exception) {}
+
+                synchronized(this) {
+                    database?.close()
+                    database = null
+                    if (dbFile.exists()) dbFile.delete()
+                    tmpFile.renameTo(dbFile)
+                    initDatabase()
+                }
+
+                val res = Arguments.createMap()
+                res.putBoolean("success", true)
+                res.putInt("version", ver)
+                res.putString("message", "Updated database to v$ver")
+                promise.resolve(res)
+            } catch (e: Exception) {
+                promise.reject("SYNC_FAILED", e.message, e)
+            }
+        }.start()
     }
 
     @ReactMethod

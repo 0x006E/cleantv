@@ -625,15 +625,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         List<RailCard> cards = new ArrayList<>();
         for (LcnDatabaseHelper.Channel ch : currentChannels) {
             int logoRes = getChannelLogoRes(ch.channelId);
-            String badge = String.valueOf(ch.lcn);
+            String displayLcn = ch.getDisplayLcn();
+            String badge = ch.isFavorite ? ("★ " + displayLcn) : displayLcn;
+            int accent = ch.isFavorite ? 0xFF0284C7 : 0xFF1E293B;
             cards.add(new RailCard(
-                    "ch_" + ch.lcn,
+                    "ch_" + displayLcn,
                     ch.name,
                     badge,
                     null,
                     logoRes,
                     RailCard.ArtworkStyle.LOGO_CENTER,
-                    0xFF0284C7,
+                    accent,
                     ch,
                     new RailCard.ActionListener() {
                         @Override
@@ -655,15 +657,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private void onChannelSelected(LcnDatabaseHelper.Channel ch) {
         if (ch == null) return;
         android.content.SharedPreferences sp = getSharedPreferences("stb_settings", MODE_PRIVATE);
-        String prefKey = "ch_use_" + activeProviderId + "_" + ch.lcn;
+        String effectiveLcn = ch.getDisplayLcn();
+        String prefKey = "ch_use_" + activeProviderId + "_" + effectiveLcn;
         int current = sp.getInt(prefKey, 0);
         sp.edit().putInt(prefKey, current + 1).apply();
 
-        Toast.makeText(this, "Tuning " + ch.lcn + " " + ch.name + "...", Toast.LENGTH_SHORT).show();
-        irManager.tuneChannelAsync(String.valueOf(ch.lcn), keyCodes, activeRemoteBitLength, null);
+        Toast.makeText(this, "Tuning " + effectiveLcn + " " + ch.name + "...", Toast.LENGTH_SHORT).show();
+        irManager.tuneChannelAsync(effectiveLcn, keyCodes, activeRemoteBitLength, null);
 
         Intent intent = new Intent(this, TvPlayerActivity.class);
-        intent.putExtra(TvPlayerActivity.EXTRA_INITIAL_LCN, ch.lcn);
+        intent.putExtra(TvPlayerActivity.EXTRA_INITIAL_LCN, effectiveLcn);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(intent);
 

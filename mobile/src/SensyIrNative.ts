@@ -129,5 +129,55 @@ export const SensyIr = {
             return false;
         }
         return SensyIrModule.saveTvIp(ip);
+    },
+
+    /**
+     * Get persisted authentication token for TV Beaming
+     */
+    async getAuthToken(): Promise<string | null> {
+        if (Platform.OS !== 'android' || !SensyIrModule?.getAuthToken) {
+            return null;
+        }
+        return SensyIrModule.getAuthToken();
+    },
+
+    /**
+     * Save persisted authentication token for TV Beaming
+     */
+    async saveAuthToken(token: string): Promise<boolean> {
+        if (Platform.OS !== 'android' || !SensyIrModule?.saveAuthToken) {
+            return false;
+        }
+        return SensyIrModule.saveAuthToken(token);
+    },
+
+    /**
+     * Clear persisted authentication token (Unpair)
+     */
+    async clearAuthToken(): Promise<boolean> {
+        if (Platform.OS !== 'android' || !SensyIrModule?.clearAuthToken) {
+            return false;
+        }
+        return SensyIrModule.clearAuthToken();
+    },
+
+    /**
+     * Get active SQLite LCN database version
+     */
+    async getDatabaseVersion(): Promise<number> {
+        if (Platform.OS !== 'android' || !SensyIrModule?.getDatabaseVersion) {
+            return 435;
+        }
+        return SensyIrModule.getDatabaseVersion();
+    },
+
+    /**
+     * Sync and update LCN database from internet
+     */
+    async syncDatabase(customUrl?: string): Promise<{ success: boolean; version: number; message: string }> {
+        if (Platform.OS !== 'android' || !SensyIrModule?.syncDatabase) {
+            return { success: false, version: 0, message: 'Not supported on this platform' };
+        }
+        return SensyIrModule.syncDatabase(customUrl ?? null);
     }
 };

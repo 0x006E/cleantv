@@ -53,6 +53,7 @@ public class RemoteSidebarActivity extends Activity {
     private int activeRemoteBitLength = 32;
 
     private final Map<String, String> keyCodes = new HashMap<>();
+    private final List<LcnDatabaseHelper.Channel> allChannels = new ArrayList<>();
     private final List<LcnDatabaseHelper.Channel> channels = new ArrayList<>();
     private final List<LcnDatabaseHelper.RemoteModel> candidateRemotes = new ArrayList<>();
     private int currentCandidateIndex = 0;
@@ -60,6 +61,7 @@ public class RemoteSidebarActivity extends Activity {
 
     private SidebarChannelsAdapter channelsAdapter;
     private RecyclerView channelsList;
+    private android.widget.EditText searchInput;
     private TextView statusText;
 
     private View tabChannels;
@@ -139,11 +141,27 @@ public class RemoteSidebarActivity extends Activity {
             });
         }
 
-        // Channels Recycler
+        // Channels Recycler & Search
+        searchInput = findViewById(R.id.sidebar_channel_search);
+        if (searchInput != null) {
+            searchInput.addTextChangedListener(new android.text.TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    filterChannels(s != null ? s.toString() : "");
+                }
+
+                @Override
+                public void afterTextChanged(android.text.Editable s) {}
+            });
+        }
+
         channelsList = findViewById(R.id.sidebar_channels_list);
         if (channelsList != null) {
             channelsList.setLayoutManager(new LinearLayoutManager(this));
-            channelsAdapter = new SidebarChannelsAdapter(channels, this::onChannelClicked);
+            channelsAdapter = new SidebarChannelsAdapter(channels, this::onChannelClicked, this::onChannelLongClicked);
             channelsList.setAdapter(channelsAdapter);
         }
 
@@ -384,31 +402,27 @@ public class RemoteSidebarActivity extends Activity {
 
             List<LcnDatabaseHelper.Channel> list = dbHelper.getChannelsForProvider(activeProviderId, 500);
 
-            // Sort channels by frequency of use descending!
-            Collections.sort(list, (a, b) -> {
-                int useA = stbPrefs.getInt("ch_use_" + activeProviderId + "_" + a.lcn, 0);
-                int useB = stbPrefs.getInt("ch_use_" + activeProviderId + "_" + b.lcn, 0);
-                if (useA != useB) {
-                    return Integer.compare(useB, useA); // Higher usage comes first
-                }
-                try {
-                    return Integer.compare(Integer.parseInt(a.lcn), Integer.parseInt(b.lcn));
-                } catch (Exception e) {
-                    return a.lcn.compareTo(b.lcn);
-                }
-            });
-
             handler.post(() -> {
                 keyCodes.clear();
                 keyCodes.putAll(codes);
-                channels.clear();
-                channels.addAll(list);
-                if (channelsAdapter != null) channelsAdapter.notifyDataSetChanged();
+                allChannels.clear();
+                allChannels.addAll(list);
+                String query = (searchInput != null && searchInput.getText() != null)
+                        ? searchInput.getText().toString() : "";
+                filterChannels(query);
                 if (statusText != null) {
-                    statusText.setText(channels.size() + " channels · Remote #" + activeRemoteId);
+                    statusText.setText(allChannels.size() + " channels · Remote #" + activeRemoteId);
                 }
             });
         }).start();
+    }
+
+    private void filterChannels(String query) {
+        channels.clear();
+        channels.addAll(dbHelper.filterChannels(allChannels, query));
+        if (channelsAdapter != null) {
+            channelsAdapter.notifyDataSetChanged();
+        }
     }
 
     private void bindKey(int viewId, String keyName) {
@@ -430,15 +444,67 @@ public class RemoteSidebarActivity extends Activity {
     }
 
     private void onChannelClicked(LcnDatabaseHelper.Channel ch) {
-        String prefKey = "ch_use_" + activeProviderId + "_" + ch.lcn;
+        String effectiveLcn = ch.getDisplayLcn();
+        String prefKey = "ch_use_" + activeProviderId + "_" + effectiveLcn;
         int current = stbPrefs.getInt(prefKey, 0);
         stbPrefs.edit().putInt(prefKey, current + 1).apply();
 
-        if (statusText != null) statusText.setText("Tuning LCN " + ch.lcn + " " + ch.name + "...");
-        irManager.tuneChannelAsync(ch.lcn, keyCodes, activeRemoteBitLength, () -> {
-            if (statusText != null) statusText.setText("Tuned: " + ch.lcn + " " + ch.name);
+        if (statusText != null) statusText.setText("Tuning LCN " + effectiveLcn + " " + ch.name + "...");
+        irManager.tuneChannelAsync(effectiveLcn, keyCodes, activeRemoteBitLength, () -> {
+            if (statusText != null) statusText.setText("Tuned: " + effectiveLcn + " " + ch.name);
             handler.postDelayed(this::finish, 600);
         });
+    }
+
+    private void onChannelLongClicked(LcnDatabaseHelper.Channel ch) {
+        String favOption = ch.isFavorite ? "Remove from Favourites" : "Mark as Favourite";
+        String[] options = new String[]{favOption, "Edit Channel Number (LCN)", "Tune Now"};
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(ch.name + " (LCN " + ch.getDisplayLcn() + ")")
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        boolean isFav = dbHelper.toggleFavorite(activeProviderId, ch);
+                        Toast.makeText(this, isFav ? "Added to favourites" : "Removed from favourites", Toast.LENGTH_SHORT).show();
+                        loadChannelsAndCodes();
+                    } else if (which == 1) {
+                        showEditLcnDialog(ch);
+                    } else if (which == 2) {
+                        onChannelClicked(ch);
+                    }
+                })
+                .show();
+    }
+
+    private void showEditLcnDialog(LcnDatabaseHelper.Channel ch) {
+        android.widget.EditText input = new android.widget.EditText(this);
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        input.setText(ch.getDisplayLcn());
+        input.setSelection(input.getText().length());
+        input.setTextColor(0xFFFFFFFF);
+        input.setBackgroundColor(0xFF151D2A);
+        input.setPadding(32, 24, 32, 24);
+
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Edit LCN for " + ch.name)
+                .setMessage("Original default: " + ch.lcn)
+                .setView(input)
+                .setPositiveButton("Save", (dialog, which) -> {
+                    String newLcn = input.getText().toString().trim();
+                    if (!newLcn.isEmpty()) {
+                        dbHelper.setCustomLcn(activeProviderId, ch.channelId, newLcn);
+                        ch.customLcn = newLcn;
+                        Toast.makeText(this, "Updated LCN to " + newLcn, Toast.LENGTH_SHORT).show();
+                        loadChannelsAndCodes();
+                    }
+                })
+                .setNeutralButton("Reset Default", (dialog, which) -> {
+                    dbHelper.setCustomLcn(activeProviderId, ch.channelId, "");
+                    ch.customLcn = null;
+                    Toast.makeText(this, "Reset to default LCN " + ch.lcn, Toast.LENGTH_SHORT).show();
+                    loadChannelsAndCodes();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     @Override
@@ -452,12 +518,18 @@ public class RemoteSidebarActivity extends Activity {
             void onChannelClick(LcnDatabaseHelper.Channel ch);
         }
 
+        interface LongListener {
+            void onChannelLongClick(LcnDatabaseHelper.Channel ch);
+        }
+
         private final List<LcnDatabaseHelper.Channel> list;
         private final Listener listener;
+        private final LongListener longListener;
 
-        SidebarChannelsAdapter(List<LcnDatabaseHelper.Channel> list, Listener listener) {
+        SidebarChannelsAdapter(List<LcnDatabaseHelper.Channel> list, Listener listener, LongListener longListener) {
             this.list = list;
             this.listener = listener;
+            this.longListener = longListener;
         }
 
         @NonNull
@@ -470,7 +542,7 @@ public class RemoteSidebarActivity extends Activity {
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
             LcnDatabaseHelper.Channel ch = list.get(position);
-            holder.lcn.setText(ch.lcn);
+            holder.lcn.setText(ch.getDisplayLcn());
             holder.name.setText(ch.name);
 
             int resId = 0;
@@ -491,7 +563,7 @@ public class RemoteSidebarActivity extends Activity {
                 holder.logo.setVisibility(View.GONE);
             }
 
-            int useCount = stbPrefs.getInt("ch_use_" + activeProviderId + "_" + ch.lcn, 0);
+            int useCount = stbPrefs.getInt("ch_use_" + activeProviderId + "_" + ch.getDisplayLcn(), 0);
             if (useCount > 0) {
                 holder.genre.setText((ch.genre != null ? ch.genre : ""));
                 holder.genre.setTextColor(0xFF38BDF8);
@@ -500,8 +572,17 @@ public class RemoteSidebarActivity extends Activity {
                 holder.genre.setTextColor(0x8CFFFFFF);
             }
 
+            if (holder.fav != null) {
+                holder.fav.setVisibility(ch.isFavorite ? View.VISIBLE : View.GONE);
+            }
+
             holder.itemView.setOnClickListener(v -> {
                 if (listener != null) listener.onChannelClick(ch);
+            });
+
+            holder.itemView.setOnLongClickListener(v -> {
+                if (longListener != null) longListener.onChannelLongClick(ch);
+                return true;
             });
         }
 
@@ -515,6 +596,7 @@ public class RemoteSidebarActivity extends Activity {
             final ImageView logo;
             final TextView name;
             final TextView genre;
+            final ImageView fav;
 
             ViewHolder(@NonNull View itemView) {
                 super(itemView);
@@ -522,6 +604,7 @@ public class RemoteSidebarActivity extends Activity {
                 logo = itemView.findViewById(R.id.channel_logo);
                 name = itemView.findViewById(R.id.channel_name);
                 genre = itemView.findViewById(R.id.channel_genre);
+                fav = itemView.findViewById(R.id.channel_fav);
             }
         }
     }

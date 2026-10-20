@@ -118,5 +118,38 @@
             style="@style/SettingsRow"
             android:layout_marginTop="10dp"
             android:text="Quick Test (Send POWER)" />
+
+        <TextView
+            android:id="@+id/avInputChoice"
+            style="@style/SettingsRow"
+            android:layout_marginTop="10dp"
+            android:text="Input Source: AV1 (HW3)" />
+
+        <TextView
+            android:id="@+id/resetChannelsChoice"
+            style="@style/SettingsRow"
+            android:layout_marginTop="10dp"
+            android:text="Reset Custom Channel Numbers &amp; Favourites" />
+
+        <!-- Mobile Companion App & Security -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:text="Mobile Companion App (Secure Pairing)"
+            android:textColor="#FFFFFFFF"
+            android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/companionPairingChoice"
+            style="@style/SettingsRow"
+            android:layout_marginTop="10dp"
+            android:text="Pair Mobile Companion App" />
+
+        <TextView
+            android:id="@+id/forgetCompanionDevicesChoice"
+            style="@style/SettingsRow"
+            android:layout_marginTop="10dp"
+            android:text="Forget Paired Mobile Devices" />
     </LinearLayout>
 </ScrollView>

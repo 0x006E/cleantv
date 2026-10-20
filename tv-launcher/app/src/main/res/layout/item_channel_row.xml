@@ -54,5 +54,14 @@
         android:textSize="11sp"
         android:fontFamily="@font/outfit"
         android:letterSpacing="0.04" />
+
+    <ImageView
+        android:id="@+id/channel_fav"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:layout_marginStart="6dp"
+        android:src="@drawable/ic_star_filled"
+        android:contentDescription="Favorite"
+        android:visibility="gone" />
 </LinearLayout>
 

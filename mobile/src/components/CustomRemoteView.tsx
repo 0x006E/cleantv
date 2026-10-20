@@ -80,7 +80,7 @@ export function CustomRemoteView({
                 <CardHeader>
                     <View style={styles.headerRow}>
                         <View style={{ flex: 1 }}>
-                            <CardTitle>🛠️ Custom Remote Studio</CardTitle>
+                            <CardTitle>Custom Remote Studio</CardTitle>
                             <CardDescription>
                                 {customRemote.name} • {keyEntries.length} custom overrides
                             </CardDescription>
@@ -92,7 +92,7 @@ export function CustomRemoteView({
                             onPress={handleSync}
                             disabled={isSaving || !isTvConnected}>
                             <Text style={styles.syncBtnText}>
-                                {isSaving ? 'Beaming...' : '🚀 Save to TV'}
+                                {isSaving ? 'Beaming...' : 'Save to TV'}
                             </Text>
                         </Button>
                     </View>
@@ -155,12 +155,12 @@ export function CustomRemoteView({
                                         size="sm"
                                         style={styles.testBtn}
                                         onPress={() => onBlastDirect(hex)}>
-                                        <Text style={styles.testBtnText}>Test ⚡</Text>
+                                        <Text style={styles.testBtnText}>Test</Text>
                                     </Button>
                                     <TouchableOpacity
                                         style={styles.deleteBtn}
                                         onPress={() => handleDeleteKey(name)}>
-                                        <Text style={styles.deleteBtnText}>✕</Text>
+                                        <Text style={styles.deleteBtnText}>X</Text>
                                     </TouchableOpacity>
                                 </View>
                             </View>
@@ -185,12 +185,13 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
     },
     syncBtn: {
-        backgroundColor: '#38BDF8',
+        backgroundColor: theme.colors.primary,
         paddingHorizontal: 12,
         height: 36,
+        borderRadius: 0,
     },
     syncBtnText: {
-        color: '#09090B',
+        color: '#FFFFFF',
         fontWeight: 'bold',
         fontSize: 12,
     },
@@ -208,15 +209,18 @@ const styles = StyleSheet.create({
     nameInput: {
         flex: 1.2,
         height: 40,
+        borderRadius: 0,
     },
     hexInput: {
         flex: 1.5,
         height: 40,
         fontFamily: 'monospace',
+        borderRadius: 0,
     },
     addBtn: {
         height: 40,
         paddingHorizontal: 14,
+        borderRadius: 0,
     },
     addBtnText: {
         fontSize: 12,
@@ -255,6 +259,7 @@ const styles = StyleSheet.create({
     testBtn: {
         height: 32,
         paddingHorizontal: 10,
+        borderRadius: 0,
     },
     testBtnText: {
         fontSize: 11,
@@ -264,8 +269,10 @@ const styles = StyleSheet.create({
     deleteBtn: {
         width: 32,
         height: 32,
-        borderRadius: 6,
-        backgroundColor: '#27272A',
+        borderRadius: 0,
+        backgroundColor: theme.colors.card,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
         alignItems: 'center',
         justifyContent: 'center',
     },

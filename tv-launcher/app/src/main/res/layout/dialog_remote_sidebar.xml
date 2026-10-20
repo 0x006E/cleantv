@@ -93,7 +93,7 @@
                 android:text="Channels"
                 android:textSize="13sp"
                 android:nextFocusRight="@+id/tab_remote"
-                android:nextFocusDown="@+id/sidebar_channels_list" />
+                android:nextFocusDown="@+id/sidebar_channel_search" />
 
             <TextView
                 android:id="@+id/tab_remote"
@@ -125,21 +125,44 @@
                 android:nextFocusDown="@+id/btn_sidebar_test_chup" />
         </LinearLayout>
 
-        <!-- Container 1: Channels List -->
-        <FrameLayout
+        <!-- Container 1: Channels List & Search -->
+        <LinearLayout
             android:id="@+id/channels_container"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1">
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <EditText
+                android:id="@+id/sidebar_channel_search"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:layout_marginTop="6dp"
+                android:layout_marginBottom="8dp"
+                android:background="#151D2A"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:hint="Search channel name or number..."
+                android:textColorHint="#60FFFFFF"
+                android:textColor="#FFFFFFFF"
+                android:textSize="13sp"
+                android:fontFamily="@font/outfit"
+                android:singleLine="true"
+                android:imeOptions="actionDone"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusUp="@+id/tab_channels"
+                android:nextFocusDown="@+id/sidebar_channels_list" />
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/sidebar_channels_list"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:clipToPadding="false"
                 android:scrollbars="none"
                 android:overScrollMode="never" />
-        </FrameLayout>
+        </LinearLayout>
 
         <!-- Container 2: Tactile Remote Keypad -->
         <ScrollView

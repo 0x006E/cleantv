@@ -30,6 +30,11 @@ public final class TvCommandServer {
     private static final String TAG = "TvCommandServer";
     public static final int DEFAULT_PORT = 8090;
 
+    public static final String PREFS_COMPANION = "companion_auth_prefs";
+    public static final String PREF_PAIRED_TOKENS = "paired_tokens";
+    public static final String PREF_ACTIVE_PIN = "active_pairing_pin";
+    public static final String PREF_PIN_EXPIRY = "active_pin_expiry";
+
     private static volatile TvCommandServer instance;
     private final Context context;
     private final ExecutorService threadPool = Executors.newCachedThreadPool();
@@ -61,9 +66,101 @@ public final class TvCommandServer {
         this.listener = listener;
     }
 
+    // --- Pairing & Authentication Helpers ---
+
+    public synchronized String getOrGeneratePairingPin() {
+        SharedPreferences sp = context.getSharedPreferences(PREFS_COMPANION, Context.MODE_PRIVATE);
+        long expiry = sp.getLong(PREF_PIN_EXPIRY, 0);
+        String pin = sp.getString(PREF_ACTIVE_PIN, null);
+        if (pin != null && System.currentTimeMillis() < expiry) {
+            return pin;
+        }
+        return generateNewPairingPin();
+    }
+
+    public synchronized String generateNewPairingPin() {
+        int randomPin = 100000 + new java.util.Random().nextInt(900000);
+        String pin = String.valueOf(randomPin);
+        long expiry = System.currentTimeMillis() + (15 * 60 * 1000); // 15 mins validity
+        context.getSharedPreferences(PREFS_COMPANION, Context.MODE_PRIVATE)
+                .edit()
+                .putString(PREF_ACTIVE_PIN, pin)
+                .putLong(PREF_PIN_EXPIRY, expiry)
+                .apply();
+        Log.i(TAG, "Generated new Companion Pairing PIN: " + pin);
+        return pin;
+    }
+
+    public synchronized boolean validatePairingPin(String inputPin) {
+        if (inputPin == null) return false;
+        String clean = inputPin.replaceAll("\\s+", "").trim();
+        SharedPreferences sp = context.getSharedPreferences(PREFS_COMPANION, Context.MODE_PRIVATE);
+        String active = sp.getString(PREF_ACTIVE_PIN, null);
+        long expiry = sp.getLong(PREF_PIN_EXPIRY, 0);
+        return active != null && active.equals(clean) && System.currentTimeMillis() <= expiry;
+    }
+
+    public synchronized String registerPairedDevice(String clientName, String clientId) {
+        SharedPreferences sp = context.getSharedPreferences(PREFS_COMPANION, Context.MODE_PRIVATE);
+        java.util.Set<String> tokens = new java.util.HashSet<>(sp.getStringSet(PREF_PAIRED_TOKENS, new java.util.HashSet<>()));
+        String token = java.util.UUID.randomUUID().toString().replace("-", "");
+        tokens.add(token);
+
+        String desc = (clientName != null && !clientName.trim().isEmpty() ? clientName.trim() : "Mobile Companion")
+                + " (Paired " + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(new java.util.Date()) + ")";
+
+        sp.edit()
+                .putStringSet(PREF_PAIRED_TOKENS, tokens)
+                .putString("device_" + token, desc)
+                .apply();
+        Log.i(TAG, "Registered new paired device: " + desc + " [token=" + token + "]");
+        return token;
+    }
+
+    public synchronized boolean isAuthorized(String token) {
+        if (token == null || token.trim().isEmpty()) return false;
+        SharedPreferences sp = context.getSharedPreferences(PREFS_COMPANION, Context.MODE_PRIVATE);
+        java.util.Set<String> tokens = sp.getStringSet(PREF_PAIRED_TOKENS, java.util.Collections.emptySet());
+        return tokens.contains(token.trim());
+    }
+
+    public synchronized void unpairDevice(String token) {
+        if (token == null) return;
+        SharedPreferences sp = context.getSharedPreferences(PREFS_COMPANION, Context.MODE_PRIVATE);
+        java.util.Set<String> tokens = new java.util.HashSet<>(sp.getStringSet(PREF_PAIRED_TOKENS, new java.util.HashSet<>()));
+        tokens.remove(token.trim());
+        sp.edit().putStringSet(PREF_PAIRED_TOKENS, tokens).remove("device_" + token.trim()).apply();
+    }
+
+    public synchronized void unpairAllDevices() {
+        SharedPreferences sp = context.getSharedPreferences(PREFS_COMPANION, Context.MODE_PRIVATE);
+        sp.edit().clear().apply();
+        generateNewPairingPin();
+        Log.i(TAG, "Unpaired all companion mobile devices");
+    }
+
+    public synchronized int getPairedDeviceCount() {
+        SharedPreferences sp = context.getSharedPreferences(PREFS_COMPANION, Context.MODE_PRIVATE);
+        java.util.Set<String> tokens = sp.getStringSet(PREF_PAIRED_TOKENS, java.util.Collections.emptySet());
+        return tokens.size();
+    }
+
+    private static String extractBearerToken(String authHeader) {
+        if (authHeader == null) return null;
+        String trimmed = authHeader.trim();
+        if (trimmed.toLowerCase(java.util.Locale.ROOT).startsWith("bearer ")) {
+            return trimmed.substring(7).trim();
+        }
+        return trimmed;
+    }
+
+    // --- Server Lifecycle & Dispatch ---
+
     public synchronized void start(int port) {
         if (isRunning) return;
         isRunning = true;
+        // Ensure active PIN is ready
+        getOrGeneratePairingPin();
         threadPool.execute(() -> {
             try {
                 serverSocket = new ServerSocket(port);
@@ -105,11 +202,18 @@ public final class TvCommandServer {
             String fullUri = parts[1];
 
             // Read headers
+            Map<String, String> headers = new HashMap<>();
             String line;
             int contentLength = 0;
             while ((line = reader.readLine()) != null && !line.isEmpty()) {
-                if (line.toLowerCase().startsWith("content-length:")) {
-                    contentLength = Integer.parseInt(line.substring(15).trim());
+                int colonIdx = line.indexOf(':');
+                if (colonIdx > 0) {
+                    String hKey = line.substring(0, colonIdx).trim().toLowerCase(java.util.Locale.ROOT);
+                    String hVal = line.substring(colonIdx + 1).trim();
+                    headers.put(hKey, hVal);
+                    if ("content-length".equals(hKey)) {
+                        try { contentLength = Integer.parseInt(hVal); } catch (Exception ignored) {}
+                    }
                 }
             }
 
@@ -141,21 +245,77 @@ public final class TvCommandServer {
             }
             Map<String, String> queryParams = parseQuery(queryString);
 
+            // Extract auth token
+            String authHeader = headers.get("authorization");
+            if (authHeader == null) authHeader = headers.get("x-auth-token");
+            if (authHeader == null) authHeader = queryParams.get("token");
+            String clientToken = extractBearerToken(authHeader);
+
             JSONObject response = new JSONObject();
             SharedPreferences stbPrefs = context.getSharedPreferences("stb_settings", Context.MODE_PRIVATE);
             SensyIrManager ir = SensyIrManager.getInstance(context);
 
             if ("/api/status".equals(path) && "GET".equals(method)) {
                 response.put("status", "online");
+                response.put("tvName", "CleanTV (Mi TV 4A)");
                 response.put("dongleConnected", ir.isConnected());
                 response.put("providerTitle", stbPrefs.getString("provider_title", "Kerala Vision Digital"));
                 response.put("providerId", stbPrefs.getInt("provider_id", 43));
                 response.put("remoteId", stbPrefs.getInt("remote_id", 43));
                 response.put("bitLength", stbPrefs.getInt("bit_length", 32));
                 response.put("hasCustomRemote", stbPrefs.contains("custom_keys_json"));
+                response.put("pairingRequired", true);
+                response.put("isPaired", isAuthorized(clientToken));
+                response.put("pairedDevicesCount", getPairedDeviceCount());
+                sendResponse(out, 200, "application/json", response.toString());
+
+            } else if ("/api/pair".equals(path) && "POST".equals(method)) {
+                String pin = queryParams.get("pin");
+                String clientName = queryParams.get("clientName");
+                String clientId = queryParams.get("clientId");
+                if (body.length() > 0) {
+                    try {
+                        JSONObject bJson = new JSONObject(body.toString());
+                        if (bJson.has("pin")) pin = bJson.getString("pin");
+                        if (bJson.has("clientName")) clientName = bJson.getString("clientName");
+                        if (bJson.has("clientId")) clientId = bJson.getString("clientId");
+                    } catch (Exception ignored) {}
+                }
+
+                if (pin != null && validatePairingPin(pin)) {
+                    String newToken = registerPairedDevice(clientName, clientId);
+                    response.put("success", true);
+                    response.put("token", newToken);
+                    response.put("tvName", "CleanTV (Mi TV 4A)");
+                    response.put("message", "Successfully paired companion mobile app!");
+                    sendResponse(out, 200, "application/json", response.toString());
+                } else {
+                    response.put("success", false);
+                    response.put("error", "Invalid pairing code. Check the 6-digit code in TV Settings -> Companion App.");
+                    sendResponse(out, 401, "application/json", response.toString());
+                }
+
+            } else if ("/api/unpair".equals(path) && "POST".equals(method)) {
+                String tokenToUnpair = clientToken;
+                if (body.length() > 0) {
+                    try {
+                        JSONObject bJson = new JSONObject(body.toString());
+                        if (bJson.has("token")) tokenToUnpair = bJson.getString("token");
+                    } catch (Exception ignored) {}
+                }
+                unpairDevice(tokenToUnpair);
+                response.put("success", true);
+                response.put("message", "Device unpaired successfully");
                 sendResponse(out, 200, "application/json", response.toString());
 
             } else if ("/api/blast".equals(path) && "POST".equals(method)) {
+                if (!isAuthorized(clientToken)) {
+                    response.put("success", false);
+                    response.put("error", "Unauthorized. Device not paired with TV. Enter TV pairing PIN in Settings.");
+                    sendResponse(out, 401, "application/json", response.toString());
+                    return;
+                }
+
                 String hex = queryParams.get("hex");
                 int bits = 32;
                 if (body.length() > 0) {
@@ -187,6 +347,13 @@ public final class TvCommandServer {
                 }
 
             } else if ("/api/custom-remote".equals(path) && "POST".equals(method)) {
+                if (!isAuthorized(clientToken)) {
+                    response.put("success", false);
+                    response.put("error", "Unauthorized. Device not paired with TV.");
+                    sendResponse(out, 401, "application/json", response.toString());
+                    return;
+                }
+
                 if (body.length() > 0) {
                     stbPrefs.edit().putString("custom_keys_json", body.toString()).apply();
                     if (listener != null) {
@@ -202,10 +369,24 @@ public final class TvCommandServer {
                 }
 
             } else if ("/api/custom-remote".equals(path) && "GET".equals(method)) {
+                if (!isAuthorized(clientToken)) {
+                    response.put("success", false);
+                    response.put("error", "Unauthorized. Device not paired with TV.");
+                    sendResponse(out, 401, "application/json", response.toString());
+                    return;
+                }
+
                 String customJson = stbPrefs.getString("custom_keys_json", "{}");
                 sendResponse(out, 200, "application/json", customJson);
 
             } else if ("/api/tune".equals(path) && "POST".equals(method)) {
+                if (!isAuthorized(clientToken)) {
+                    response.put("success", false);
+                    response.put("error", "Unauthorized. Device not paired with TV.");
+                    sendResponse(out, 401, "application/json", response.toString());
+                    return;
+                }
+
                 String lcn = queryParams.get("lcn");
                 if (body.length() > 0) {
                     try {
@@ -261,7 +442,7 @@ public final class TvCommandServer {
 
             ir.tuneChannelAsync(lcn, keys, bitLength, () -> {
                 try {
-                    String avInputId = "com.xiaomi.mitv.tvinput/.TvInputService/HW3";
+                    String avInputId = stbPrefs.getString("av_input_id", "com.xiaomi.mitv.tvinput/.TvInputService/HW3");
                     Uri uri = TvContract.buildChannelUriForPassthroughInput(avInputId);
                     Intent intent = new Intent(Intent.ACTION_VIEW, uri);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -294,8 +475,8 @@ public final class TvCommandServer {
                 + "Content-Type: " + contentType + "; charset=utf-8\r\n"
                 + "Content-Length: " + bytes.length + "\r\n"
                 + "Access-Control-Allow-Origin: *\r\n"
-                + "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
-                + "Access-Control-Allow-Headers: Content-Type, Accept\r\n"
+                + "Access-Control-Allow-Methods: GET, POST, OPTIONS, DELETE\r\n"
+                + "Access-Control-Allow-Headers: Content-Type, Accept, Authorization, X-Auth-Token\r\n"
                 + "Connection: close\r\n\r\n";
         out.write(header.getBytes(StandardCharsets.UTF_8));
         if (bytes.length > 0) {

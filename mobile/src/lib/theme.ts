@@ -1,32 +1,32 @@
 export const theme = {
     colors: {
-        background: '#09090b',         // zinc-950
-        foreground: '#fafafa',         // zinc-50
-        card: '#18181b',               // zinc-900
-        cardForeground: '#fafafa',
-        popover: '#18181b',
-        popoverForeground: '#fafafa',
-        primary: '#10b981',            // emerald-500
-        primaryForeground: '#09090b',
-        secondary: '#27272a',          // zinc-800
-        secondaryForeground: '#f4f4f5',
-        muted: '#27272a',
-        mutedForeground: '#a1a1aa',    // zinc-400
-        accent: '#27272a',
-        accentForeground: '#fafafa',
-        destructive: '#ef4444',        // red-500
-        destructiveForeground: '#fafafa',
-        border: '#27272a',             // zinc-800
-        borderSubtle: '#3f3f46',       // zinc-700
-        input: '#27272a',
-        ring: '#10b981',
+        background: '#0B0F19',         // OLED Deep Space Black
+        foreground: '#FFFFFF',         // Pure White
+        card: '#151D2A',               // CleanTV Elevated Surface
+        cardForeground: '#FFFFFF',
+        popover: '#151D2A',
+        popoverForeground: '#FFFFFF',
+        primary: '#0284C7',            // CleanTV Sky Blue Accent
+        primaryForeground: '#FFFFFF',
+        secondary: '#1E293B',          // Slate Dark Surface
+        secondaryForeground: '#F1F5F9',
+        muted: '#1E293B',
+        mutedForeground: '#94A3B8',    // Slate Dim Text
+        accent: '#38BDF8',             // Light Sky Accent
+        accentForeground: '#0B0F19',
+        destructive: '#EF4444',        // Red
+        destructiveForeground: '#FFFFFF',
+        border: '#1E293B',             // Crisp Low-Contrast Border
+        borderSubtle: '#334155',       // Highlight Border
+        input: '#151D2A',
+        ring: '#0284C7',
     },
     radii: {
-        sm: 6,
-        md: 8,
-        lg: 12,
-        xl: 16,
-        full: 9999,
+        sm: 0,
+        md: 0,
+        lg: 0,
+        xl: 0,
+        full: 0,
     }
 } as const;
 

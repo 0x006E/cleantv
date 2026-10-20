@@ -76,15 +76,63 @@ export const TvBeamingService = {
     },
 
     /**
+     * Pair companion app with Mi TV using 6-digit code shown on TV screen
+     */
+    async pair(tvIp: string, pin: string, clientName: string = 'Pixel 8 Companion'): Promise<{ success: boolean; token: string; message: string }> {
+        const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/pair`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pin, clientName, clientId: 'pixel8_companion' }),
+                signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Pairing failed. Check 6-digit PIN on TV.');
+            }
+            return data;
+        } catch (err: any) {
+            clearTimeout(timeout);
+            throw err;
+        }
+    },
+
+    /**
+     * Unpair companion app from Mi TV
+     */
+    async unpair(tvIp: string, token?: string | null): Promise<boolean> {
+        const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/unpair`;
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ token }),
+            });
+            const data = await res.json();
+            return !!data.success;
+        } catch {
+            return false;
+        }
+    },
+
+    /**
      * Check if the Mi TV launcher is online on the local Wi-Fi / Tailscale
      */
-    async checkStatus(tvIp: string): Promise<TvStatus> {
+    async checkStatus(tvIp: string, token?: string | null): Promise<TvStatus> {
         const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/status`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 8000);
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
 
         try {
-            const res = await fetch(url, { signal: controller.signal });
+            const res = await fetch(url, { headers, signal: controller.signal });
             clearTimeout(timeout);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return await res.json();
@@ -97,19 +145,25 @@ export const TvBeamingService = {
     /**
      * Beam an IR hex code to the Mi TV to blast via USB dongle
      */
-    async blast(tvIp: string, hexCode: string, bitLength: number = 32): Promise<boolean> {
+    async blast(tvIp: string, hexCode: string, bitLength: number = 32, token?: string | null): Promise<boolean> {
         const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/blast`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 8000);
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
         try {
             const res = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({ hex: hexCode, bits: bitLength }),
                 signal: controller.signal,
             });
             clearTimeout(timeout);
-            if (!res.ok) throw new Error(`Blast failed: HTTP ${res.status}`);
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `Blast failed: HTTP ${res.status}`);
+            }
             const data = await res.json();
             return !!data.success;
         } catch (err: any) {
@@ -121,14 +175,17 @@ export const TvBeamingService = {
     /**
      * Beam and save a custom remote keymap to the Mi TV launcher
      */
-    async saveCustomRemote(tvIp: string, config: CustomRemoteConfig): Promise<boolean> {
+    async saveCustomRemote(tvIp: string, config: CustomRemoteConfig, token?: string | null): Promise<boolean> {
         const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/custom-remote`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 8000);
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
         try {
             const res = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify(config),
                 signal: controller.signal,
             });
@@ -145,12 +202,15 @@ export const TvBeamingService = {
     /**
      * Fetch the saved custom remote configuration from the Mi TV
      */
-    async getCustomRemote(tvIp: string): Promise<CustomRemoteConfig | null> {
+    async getCustomRemote(tvIp: string, token?: string | null): Promise<CustomRemoteConfig | null> {
         const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/custom-remote`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 8000);
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
         try {
-            const res = await fetch(url, { signal: controller.signal });
+            const res = await fetch(url, { headers, signal: controller.signal });
             clearTimeout(timeout);
             if (!res.ok) return null;
             const data = await res.json();
@@ -165,19 +225,25 @@ export const TvBeamingService = {
     /**
      * Tune a channel on the Mi TV (IR blast + switch AV1)
      */
-    async tuneChannel(tvIp: string, lcn: string): Promise<boolean> {
+    async tuneChannel(tvIp: string, lcn: string, token?: string | null): Promise<boolean> {
         const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/tune`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 8000);
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
         try {
             const res = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({ lcn }),
                 signal: controller.signal,
             });
             clearTimeout(timeout);
-            if (!res.ok) throw new Error(`Tune failed: HTTP ${res.status}`);
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `Tune failed: HTTP ${res.status}`);
+            }
             const data = await res.json();
             return !!data.success;
         } catch (err: any) {
