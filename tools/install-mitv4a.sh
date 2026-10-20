@@ -24,7 +24,7 @@ fi
 adb -s "$TV_IP:5555" install -r "$APK_PATH"
 
 echo "==> 3. Enabling Xiaomi Home button intercept (HomeKeyService)..."
-adb -s "$TV_IP:5555" shell settings put secure enabled_accessibility_services com.gathin.tvhome/.HomeKeyService
+adb -s "$TV_IP:5555" shell settings put secure enabled_accessibility_services dev.ntsv.cleantv/.HomeKeyService
 adb -s "$TV_IP:5555" shell settings put secure accessibility_enabled 1
 
 echo "==> 4. Debloating PatchWall & Xiaomi telemetry (safe disable, reversible)..."
@@ -50,7 +50,8 @@ for pkg in "${DEBLOAT_PKGS[@]}"; do
 done
 
 echo "==> 5. Launching clean home..."
-adb -s "$TV_IP:5555" shell monkey -p com.gathin.tvhome -c android.intent.category.LAUNCHER 1
+adb -s "$TV_IP:5555" shell cmd package set-home-activity --user 0 dev.ntsv.cleantv/.MainActivity
+adb -s "$TV_IP:5555" shell am start -W -n dev.ntsv.cleantv/.MainActivity
 
 echo ""
 echo "=============================================================================="
