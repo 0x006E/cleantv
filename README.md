@@ -1,168 +1,205 @@
-# Xiaomi / Sensy USB IR Blaster Dongle (`2717:003d`) & STB Remote System
+# CleanTV & CleanTV Companion
 
-A TypeScript driver, STB SQLite database library, and pairing/transmission CLI for the Xiaomi / Sensara Sensy USB Consumer IR Dongle. Reverse-engineered directly from `co-sensara-appsense-188-62097078-e53d5b3b45d2fd3224df1ea62a890347.apk`.
+[![Android TV](https://img.shields.io/badge/Platform-Android%20TV%20%7C%20Google%20TV-3DDC84.svg?logo=android)](tv-launcher/)
+[![Mobile Companion](https://img.shields.io/badge/Companion-React%20Native%20(Android)-61DAFB.svg?logo=react)](mobile/)
+[![TypeScript](https://img.shields.io/badge/Driver-TypeScript%20%7C%20Node.js-3178C6.svg?logo=typescript)](src/)
+[![Security](https://img.shields.io/badge/Security-AES--256--GCM%20%2F%20PBKDF2-blueviolet.svg)](docs/PROTOCOL.md)
+[![License](https://img.shields.io/badge/License-Apache%202.0-lightgrey.svg)](LICENSE)
+
+An ultra-fast, zero-bloat Android TV launcher and mobile companion system engineered for TVs with the **Xiaomi / Sensara USB Consumer IR Blaster Dongle (`2717:003d`)**. 
+
+CleanTV turns legacy cable/DTH Set-Top Boxes into first-class smart TV experiences with live channel rails, instant infrared tuning, an on-screen translucent remote sidebar, and encrypted LAN beaming from mobile devices.
 
 ---
 
-## Architecture Overview
+## Screenshots
+
+| TV Rails & Live Channels | Interactive STB Setup Wizard |
+|:---:|:---:|
+| ![TV Home Rails](docs/screenshots/tv_home_rails.png) | ![STB Setup Wizard](docs/screenshots/tv_stb_wizard.png) |
+
+| Live TV Remote Sidebar | Mobile Companion Remote | Mobile IR Studio & Scanner |
+|:---:|:---:|:---:|
+| ![TV Remote Sidebar](docs/screenshots/tv_remote_sidebar.png) | ![Mobile Remote](docs/screenshots/mobile_remote.png) | ![Mobile Scanner](docs/screenshots/mobile_scanner.png) |
+
+---
+
+## Key Features
+
+- **Ultra-Fast Leanback Launcher (`dev.ntsv.cleantv`)**:
+  - Replaces bloated, ad-heavy stock launchers (PatchWall, Google TV) with zero background overhead.
+  - Native Android TV Rails UI displaying installed apps, favorite channels, and live inputs.
+  - Custom glass highlight animations, time-of-day ambient background, and speed-compiled ART profile.
+- **USB IR Blaster Engine (`2717:003d`)**:
+  - Direct hardware driver for Xiaomi/Sensara USB IR dongles on Android TV and mobile USB OTG.
+  - Supports 3,700+ providers and Set-Top Box models (Kerala Vision, Tata Play, Airtel DTH, Sun Direct, Dish TV, etc.).
+  - Automatic STB configuration wizard on first launch when an IR dongle is detected.
+- **CleanTV Companion (`dev.ntsv.cleantvcompanion`)**:
+  - React Native mobile app with haptic touch controls, D-Pad navigation, channel selector, and volume/power keys.
+  - IR Protocol Scanner & Studio for discovering unknown remotes and capturing timing pulses.
+  - Real-time transmission logger with millisecond precision.
+- **End-to-End Encrypted LAN Beaming**:
+  - Zero-cloud local Wi-Fi control over port `8090`.
+  - Authenticated **AES-256-GCM** encryption with **PBKDF2-SHA256** key derivation from an on-screen TV pairing PIN.
+  - HMAC integrity verification prevents tampering and replay attacks.
+- **Thoughtful Remote UX**:
+  - **Live TV Back Key Mapping**: Single press sends STB `BACK` via IR; double-press within 2 seconds cleanly exits back to the Launcher.
+  - **Translucent Remote Sidebar**: Access full STB controls on TV without interrupting live video playback.
+  - **Settings Backup & Restore**: Export and import complete provider, channel mapping, and custom key configs across devices.
+
+---
+
+## Architecture
 
 ```
-                                      +-------------------------------+
-                                      |    Sensara CDN (Online)       |
-                                      |  lcndata/lcndb-v<ver>.db      |
-                                      +---------------+---------------+
-                                                      |  OTA Sync
-                                                      v
-+--------------------------+          +---------------+---------------+
-|    SensyIrDongle (USB)   | <------> |     SensyDatabase (SQLite)    |
-|   - State Machine        |          |  - Offline database (v380)    |
-|   - NEC 32-bit encoder   |          |  - Kerala Vision (Group 43)   |
-|   - Bulk stream buffer   |          |  - 7 Candidate Remote models  |
-+------------+-------------+          +---------------+---------------+
-             |                                        |
-             +-------------------+--------------------+
-                                 |
-                                 v
-                     +-----------------------+
-                     |  pair_and_send CLI    |
-                     |  - Interactive Pairing|
-                     |  - Keycode Dispatch   |
-                     |  - CDN Update & Sync  |
-                     +-----------------------+
+                       +---------------------------------------+
+                       |    Sensara STB Cloud / Local DB       |
+                       |      (3,700+ DTH/Cable Providers)     |
+                       +-------------------+-------------------+
+                                           |
+                   +-----------------------+-----------------------+
+                   |                                               |
+                   v                                               v
+   +-------------------------------+               +-------------------------------+
+   |      CleanTV Companion        |  AES-256-GCM  |        CleanTV Launcher       |
+   | (dev.ntsv.cleantvcompanion)   | <-----------> |       (dev.ntsv.cleantv)      |
+   | - React Native UI             |  Port 8090    | - Android TV Rails Home       |
+   | - IR Code Studio & Scanner    |   LAN Wi-Fi   | - Live TV Player Activity     |
+   | - Dynamic Remote Sync         |               | - Embedded HTTP Command Server|
+   +---------------+---------------+               +---------------+---------------+
+                   |                                               |
+                   | USB OTG                                       | USB Host
+                   v                                               v
+       +---------------------------------------------------------------+
+       |       Xiaomi / Sensara USB IR Blaster Dongle (VID 0x2717)     |
+       +-------------------------------+-------------------------------+
+                                       |
+                                       | 38kHz NEC Modulated IR
+                                       v
+                       +-------------------------------+
+                       |       Cable / DTH STB         |
+                       |    (Kerala Vision, etc.)      |
+                       +-------------------------------+
 ```
 
 ---
 
-## Features
+## Repository Layout
 
-- **Strict TypeScript Types**: Fully typed interfaces for all hardware states, SQLite database entities, protocol models, and paired profiles (`types.ts`).
-- **Offline & Online Database (`SensyDatabase`)**:
-  - Uses Node's built-in `node:sqlite` for zero-native-dependency SQLite access.
-  - Queries 3,700+ providers, STB models, key mappings, and protocol parameters.
-  - Built-in online CDN checker and OTA updater supporting versions up to **v435**.
-- **USB IR Blaster Driver (`SensyIrDongle`)**:
-  - WebUSB-compliant device driver for Xiaomi `2717:003d`.
-  - Encodes 32-bit NEC codes (MSB-first), standard NEC address/command bytes, Pronto HEX, and arbitrary raw pulse/space intervals.
-- **Pairing & Transmission CLI (`pair_and_send.ts`)**:
-  - Interactive pairing wizard cycling through candidate remotes (e.g. Kerala Vision 43, 74, 85, 114, 116, 184, 248).
-  - One-line key transmission: `power`, `vol_up`, `vol_down`, `ch_up`, `ch_down`, `ok`, digits `0-9`, etc.
-  - Rapid testing of all candidate profiles.
+```text
+├── tv-launcher/                # Android TV Leanback Launcher (dev.ntsv.cleantv)
+│   ├── app/src/main/java/      # Native Java launcher, STB engine, and HTTP server
+│   ├── app/src/main/res/       # TV Rails layouts, animations, and design tokens
+│   └── build-and-install.sh    # Fast build and zero-downtime ADB deployment
+├── mobile/                     # React Native Companion App (dev.ntsv.cleantvcompanion)
+│   ├── src/                    # UI Components, Screens, Encryption, and Decoupled Services
+│   └── android/                # Native Android wrapper & Sensy USB bridge module
+├── research/                   # Hardware reverse-engineering, driver & CLI suite
+│   ├── src/                    # TypeScript WebUSB driver & SQLite query engine
+│   ├── tests/                  # Hardware TX, NEC encoding, and database test suites
+│   ├── sensy_ir.js             # Standalone reverse-engineered prototype script
+│   └── lcndb.db                # Reference STB SQLite database
+├── tools/                      # Mi TV deployment, ADB batching, and debloating scripts
+│   ├── install-mitv4a.sh       # Automated installation and debloat for Mi TV 4A
+│   └── restore-mitv4a.sh       # System restore and stock launcher re-enable
+└── docs/                       # Technical specs and developer guides
+    ├── PROTOCOL.md             # LAN Beaming encryption and REST API documentation
+    ├── HARDWARE_IR.md          # Reverse-engineered USB protocol & opcodes
+    └── screenshots/            # UI screenshots and visual assets
+```
 
 ---
 
-## Build & Test
+## Quick Start
+
+### 1. TV Launcher Installation
+
+Ensure ADB debugging is enabled on your Android TV:
 
 ```bash
-# Build TypeScript
+# Set TV host IP address
+export TV_HOST="100.97.35.51:5555"
+
+# Build and install release APK, grant permissions, and set as default Home
+cd tv-launcher
+./build-and-install.sh
+```
+
+Or build manually via Gradle:
+```bash
+cd tv-launcher
+./gradlew assembleRelease
+adb install -r app/build/outputs/apk/release/app-release.apk
+adb shell cmd package set-home-activity --user 0 dev.ntsv.cleantv/.MainActivity
+```
+
+### 2. Mobile Companion App Installation
+
+```bash
+cd mobile
+
+# Install dependencies
+npm install
+
+# Bundle React Native JavaScript assets
+npx react-native bundle --platform android --dev false \
+  --entry-file index.js \
+  --bundle-output android/app/src/main/assets/index.android.bundle \
+  --assets-dest android/app/src/main/res/
+
+# Build and install release APK
+cd android
+./gradlew assembleRelease
+adb -s <DEVICE_ID> install -r app/build/outputs/apk/release/app-release.apk
+```
+
+### 3. Standalone Research Driver & CLI
+
+You can also explore the hardware protocol and query the STB database directly from your workstation:
+
+```bash
+cd research
+
+# Install dependencies & build
+npm install
 npm run build
 
-# Run All Tests (Database, Protocol/Hardware, and E2E)
-npm test
-
-# Or run individual test suites:
-npm run test:db    # SQLite queries, Kerala Vision key resolution, and CDN version probe
-npm run test:ir    # NEC timing generation, state machine & real hardware TX
-npm run test:e2e   # Pairing, saving config, and end-to-end keycode dispatch
-```
-
----
-
-## CLI Usage (`pair_and_send`)
-
-### 1. Check Dongle & Database Status
-```bash
+# Check dongle and database status
 npm run stb -- --status
-```
-Output:
-```text
-=== Sensy IR Dongle Status ===
-USB Hardware : Connected (VID: 0x2717, PID: 0x3d)
-Firmware API : v1
-Device State : Idle (Code: 0)
 
-=== Database Metadata ===
-Local DB Version : v380 (Model v1)
-
-=== Paired STB Configuration ===
-Provider   : Kerala Vision
-Remote ID  : 43
-Protocol   : NEC (38000 Hz, 32 bits)
-Total Keys : 38 configured
-```
-
-### 2. Kerala Vision STB Pairing
-
-#### A. Interactive Pairing Wizard
-Cycles through candidate remotes one by one, prompting you to verify if the STB turns ON/OFF or adjusts volume:
-```bash
+# Interactive pairing wizard
 npm run stb -- --pair-kerala
-```
 
-#### B. Rapid Test All Kerala Vision Profiles
-Sends the `POWER` command for each of the 7 candidate remote models every 2.5 seconds so you can watch which one toggles your STB:
-```bash
-npm run stb -- --test-all-kerala
-```
-
-#### C. Directly Pair a Known Remote ID
-```bash
-npm run stb -- --pair-remote 43 --provider "Kerala Vision"
-```
-
-### 3. Send Keycodes to Paired STB
-Once paired, commands are resolved from `paired_stb.json` and transmitted immediately:
-```bash
+# Send specific IR key commands
 npm run stb -- --send power
 npm run stb -- --send vol_up
-npm run stb -- --send vol_down
-npm run stb -- --send ch_up
-npm run stb -- --send ch_down
-npm run stb -- --send ok
-npm run stb -- --send mute
-npm run stb -- --send 1
+npm run stb -- --send 1 0
 ```
-
-### 4. Direct Sending (Without Pairing)
-```bash
-npm run stb -- --send-direct 43 power
-npm run stb -- --send-direct 74 vol_up
-```
-
-### 5. Online Database Updates
-Check for updates or download the latest database from Sensara CDN:
-```bash
-# Check latest CDN revision
-npm run stb -- --check-update
-
-# Download and upgrade local database
-npm run stb -- --update-db
-```
+See the [Research & Hardware Engineering Guide](research/README.md) for reverse-engineering details and test suite usage.
 
 ---
 
-## Programmatic Library Usage
+## Security & Privacy
 
-```typescript
-import { SensyDatabase, SensyIrDongle } from './src/index.js';
+- **100% Local**: No internet connection, telemetry, or cloud accounts required.
+- **Encrypted Local Beaming**: All LAN commands use AES-256-GCM authenticated with a dynamically generated pairing PIN.
+- **Sandboxed Preferences**: Backups contain only STB channel customizations and pairing keys; private user data is never accessed.
 
-async function main() {
-    // 1. Initialize SQLite Database & look up Kerala Vision
-    const db = new SensyDatabase();
-    db.open();
-    const remotes = db.getKeralaVisionRemotes();
-    console.log(`Found ${remotes.length} candidate remotes for Kerala Vision.`);
+---
 
-    const profile = remotes[0]; // Remote 43
-    const pwrCode = profile.keyMap['POWER'].rawCode; // '0x14eb18e7'
-    db.close();
+## Acknowledgements & Upstream Credits
 
-    // 2. Transmit via USB Dongle
-    const dongle = new SensyIrDongle();
-    await dongle.connect();
-    console.log(`Transmitting POWER (${pwrCode}) to Set-Top Box...`);
-    await dongle.sendNecHex(pwrCode, profile.remote.length, 38000);
-    await dongle.disconnect();
-}
+- **[CleanYourTV](https://github.com/Gathin23/cleanyourtv)** by **[Gathin23](https://github.com/Gathin23)**:
+  - The TV launcher foundation (`tv-launcher/`), sleek Leanback Rails architecture, glass navigation, ambient backdrop system, and ADB debloating scripts are derived from the fantastic open-source [CleanYourTV](https://github.com/Gathin23/cleanyourtv) project (licensed under MIT).
+- **Sensara / Sensy**:
+  - The USB Consumer IR dongle hardware reference (`2717:003d`) and LCN database schema.
+- **The Outfit Project**:
+  - The Outfit typeface is licensed under the SIL Open Font License 1.1.
+- **AI Assistance**:
+  - This project was researched, architected, and built with AI pair-programming assistance from **Google DeepMind's Antigravity**.
 
-main().catch(console.error);
-```
+---
+
+## License
+
+This project is licensed under the Apache 2.0 License. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for details.
