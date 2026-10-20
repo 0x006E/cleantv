@@ -54,7 +54,6 @@ public class TvPlayerActivity extends Activity {
 
     private boolean okKeyDownHandled = false;
     private boolean backDownReceived = false;
-    private long lastBackPressTime = 0;
     private final Runnable longPressOkRunnable = () -> {
         okKeyDownHandled = true;
         openRemoteSidebar();
@@ -323,7 +322,7 @@ public class TvPlayerActivity extends Activity {
             }
         }
 
-        // Back key: single click transmits STB BACK; double click within 2s exits to Launcher
+        // Back key: single click exits directly to Launcher / Home screen
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             if (action == KeyEvent.ACTION_DOWN) {
                 backDownReceived = true;
@@ -331,14 +330,7 @@ public class TvPlayerActivity extends Activity {
             } else if (action == KeyEvent.ACTION_UP) {
                 if (backDownReceived) {
                     backDownReceived = false;
-                    long now = android.os.SystemClock.elapsedRealtime();
-                    if (now - lastBackPressTime < 2000) {
-                        finish();
-                    } else {
-                        lastBackPressTime = now;
-                        transmitKey("BACK", "STB BACK");
-                        showOsd("STB BACK", "Press Back again to exit to Home", 2000);
-                    }
+                    finish();
                     return true;
                 }
                 return true; // Consume orphaned ACTION_UP from dismissed sidebar

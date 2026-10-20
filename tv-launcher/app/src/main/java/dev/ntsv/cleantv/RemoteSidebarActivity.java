@@ -57,6 +57,8 @@ public class RemoteSidebarActivity extends Activity {
     private final List<LcnDatabaseHelper.Channel> channels = new ArrayList<>();
     private final List<LcnDatabaseHelper.RemoteModel> candidateRemotes = new ArrayList<>();
     private int currentCandidateIndex = 0;
+    private int pendingFocusChannelId = -1;
+    private String pendingFocusChannelLcn = null;
     private final android.util.SparseIntArray logoCache = new android.util.SparseIntArray();
 
     private SidebarChannelsAdapter channelsAdapter;
@@ -155,6 +157,29 @@ public class RemoteSidebarActivity extends Activity {
 
                 @Override
                 public void afterTextChanged(android.text.Editable s) {}
+            });
+            searchInput.setOnKeyListener((v, keyCode, event) -> {
+                if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && event.getAction() == KeyEvent.ACTION_DOWN) {
+                    if (channelsList != null && channelsList.getChildCount() > 0) {
+                        channelsList.getChildAt(0).requestFocus();
+                        return true;
+                    }
+                }
+                return false;
+            });
+            searchInput.setOnEditorActionListener((v, actionId, event) -> {
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+                        || (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN)) {
+                    android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(searchInput.getWindowToken(), 0);
+                    }
+                    if (channelsList != null && channelsList.getChildCount() > 0) {
+                        channelsList.getChildAt(0).requestFocus();
+                    }
+                    return true;
+                }
+                return false;
             });
         }
 
@@ -409,6 +434,40 @@ public class RemoteSidebarActivity extends Activity {
         if (channelsAdapter != null) {
             channelsAdapter.notifyDataSetChanged();
         }
+        if (pendingFocusChannelId > 0 || pendingFocusChannelLcn != null) {
+            int targetIdx = -1;
+            for (int i = 0; i < channels.size(); i++) {
+                LcnDatabaseHelper.Channel c = channels.get(i);
+                if ((pendingFocusChannelId > 0 && c.channelId == pendingFocusChannelId)
+                        || (pendingFocusChannelLcn != null && pendingFocusChannelLcn.equals(c.getDisplayLcn()))) {
+                    targetIdx = i;
+                    break;
+                }
+            }
+            final int posToFocus = targetIdx;
+            pendingFocusChannelId = -1;
+            pendingFocusChannelLcn = null;
+            if (posToFocus >= 0 && channelsList != null) {
+                channelsList.scrollToPosition(posToFocus);
+                Runnable focusTask = new Runnable() {
+                    int attempts = 0;
+                    @Override
+                    public void run() {
+                        attempts++;
+                        RecyclerView.ViewHolder vh = channelsList.findViewHolderForAdapterPosition(posToFocus);
+                        View v = vh != null ? vh.itemView : (channelsList.getLayoutManager() != null ? channelsList.getLayoutManager().findViewByPosition(posToFocus) : null);
+                        if (v != null) {
+                            v.setFocusableInTouchMode(true);
+                            v.requestFocus();
+                            v.setFocusableInTouchMode(false);
+                        } else if (attempts < 6) {
+                            channelsList.postDelayed(this, 50);
+                        }
+                    }
+                };
+                channelsList.postDelayed(focusTask, 50);
+            }
+        }
     }
 
     private void bindKey(int viewId, String keyName) {
@@ -449,6 +508,8 @@ public class RemoteSidebarActivity extends Activity {
                 .setTitle(ch.name + " (LCN " + ch.getDisplayLcn() + ")")
                 .setItems(options, (dialog, which) -> {
                     if (which == 0) {
+                        pendingFocusChannelId = ch.channelId;
+                        pendingFocusChannelLcn = ch.getDisplayLcn();
                         boolean isFav = dbHelper.toggleFavorite(activeProviderId, ch);
                         Toast.makeText(this, isFav ? "Added to favourites" : "Removed from favourites", Toast.LENGTH_SHORT).show();
                         loadChannelsAndCodes();
@@ -464,33 +525,79 @@ public class RemoteSidebarActivity extends Activity {
     private void showEditLcnDialog(LcnDatabaseHelper.Channel ch) {
         android.widget.EditText input = new android.widget.EditText(this);
         input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        input.setSingleLine(true);
+        input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
         input.setText(ch.getDisplayLcn());
         input.setSelection(input.getText().length());
         input.setTextColor(0xFFFFFFFF);
         input.setBackgroundColor(0xFF151D2A);
         input.setPadding(32, 24, 32, 24);
 
-        new android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
                 .setTitle("Edit LCN for " + ch.name)
                 .setMessage("Original default: " + ch.lcn)
                 .setView(input)
-                .setPositiveButton("Save", (dialog, which) -> {
+                .setPositiveButton("Save", (d, which) -> {
                     String newLcn = input.getText().toString().trim();
                     if (!newLcn.isEmpty()) {
                         dbHelper.setCustomLcn(activeProviderId, ch.channelId, newLcn);
                         ch.customLcn = newLcn;
                         Toast.makeText(this, "Updated LCN to " + newLcn, Toast.LENGTH_SHORT).show();
+                        pendingFocusChannelId = ch.channelId;
+                        pendingFocusChannelLcn = newLcn;
                         loadChannelsAndCodes();
                     }
                 })
-                .setNeutralButton("Reset Default", (dialog, which) -> {
+                .setNeutralButton("Reset Default", (d, which) -> {
                     dbHelper.setCustomLcn(activeProviderId, ch.channelId, "");
                     ch.customLcn = null;
                     Toast.makeText(this, "Reset to default LCN " + ch.lcn, Toast.LENGTH_SHORT).show();
+                    pendingFocusChannelId = ch.channelId;
+                    pendingFocusChannelLcn = ch.lcn;
                     loadChannelsAndCodes();
                 })
                 .setNegativeButton("Cancel", null)
-                .show();
+                .create();
+
+        dialog.setOnShowListener(d -> {
+            android.widget.Button saveBtn = dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE);
+            android.widget.Button resetBtn = dialog.getButton(android.content.DialogInterface.BUTTON_NEUTRAL);
+            android.widget.Button cancelBtn = dialog.getButton(android.content.DialogInterface.BUTTON_NEGATIVE);
+            if (saveBtn != null) saveBtn.setFocusableInTouchMode(true);
+            if (resetBtn != null) resetBtn.setFocusableInTouchMode(true);
+            if (cancelBtn != null) cancelBtn.setFocusableInTouchMode(true);
+
+            input.setOnEditorActionListener((v, actionId, event) -> {
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+                        || (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN)) {
+                    android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
+                    }
+                    if (saveBtn != null) {
+                        saveBtn.requestFocus();
+                    }
+                    return true;
+                }
+                return false;
+            });
+            input.setOnKeyListener((v, keyCode, event) -> {
+                if ((keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_DPAD_DOWN)
+                        && event.getAction() == KeyEvent.ACTION_DOWN) {
+                    android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
+                    }
+                    if (saveBtn != null) {
+                        saveBtn.requestFocus();
+                        return true;
+                    }
+                }
+                return false;
+            });
+        });
+
+        dialog.show();
     }
 
     @Override

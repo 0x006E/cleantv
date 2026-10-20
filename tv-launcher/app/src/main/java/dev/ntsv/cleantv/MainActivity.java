@@ -47,6 +47,7 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowManager;
 import android.view.animation.AnimationUtils;
 import android.view.animation.LayoutAnimationController;
 import android.widget.FrameLayout;
@@ -125,6 +126,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private int activeRemoteId = -1;
     private int activeRemoteBitLength = 32;
     private boolean wizardPromptedThisSession = false;
+    private int pendingFocusChannelId = -1;
+    private String pendingFocusChannelLcn = null;
     private final Map<String, String> keyCodes = new HashMap<>();
     private final List<LcnDatabaseHelper.Channel> currentChannels = new ArrayList<>();
     /** Optional time-of-day backdrop (config.xml, sky_intensity); 0 keeps it hidden. */
@@ -227,6 +230,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         activeInstance = this;
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER);
         setContentView(R.layout.activity_main);
         density = getResources().getDisplayMetrics().density;
         // config.xml, overlaid by config.json from a pushed theme (see Config and tools/theme.sh).
@@ -383,12 +387,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnInputs.setOnClickListener(v -> showInputs());
         btnWifi.setOnClickListener(v -> openNetworkPill());
         btnWifi.setOnLongClickListener(v -> {
-            open(systemIntent(Settings.ACTION_WIFI_SETTINGS));
+            openSystemSettings(Settings.ACTION_WIFI_SETTINGS);
             return true;
         });
         btnSettings.setOnClickListener(v -> showSettingsMenu());
         btnSettings.setOnLongClickListener(v -> {
-            open(systemIntent(Settings.ACTION_SETTINGS));
+            openSystemSettings(Settings.ACTION_SETTINGS);
             return true;
         });
 
@@ -488,6 +492,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (intent != null && android.hardware.usb.UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(intent.getAction())) {
+            if (irManager != null) {
+                irManager.requestPermission(this::loadStbChannels);
+            }
+        }
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
         if (grid != null) {
             grid.scrollToPosition(0);
@@ -660,6 +669,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                                             if (which == 0) {
                                                 boolean isFav = dbHelper.toggleFavorite(activeProviderId, chItem);
                                                 Toast.makeText(MainActivity.this, (isFav ? "★ Added to Favourites: " : "Removed Favourite: ") + chItem.name, Toast.LENGTH_SHORT).show();
+                                                pendingFocusChannelId = chItem.channelId;
+                                                pendingFocusChannelLcn = chItem.getDisplayLcn();
                                                 loadStbChannels();
                                             } else if (which == 1) {
                                                 showEditLcnDialog(chItem);
@@ -676,6 +687,55 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             ));
         }
         channelsAdapter.setItems(cards);
+        if (pendingFocusChannelId > 0 || pendingFocusChannelLcn != null) {
+            int targetIdx = -1;
+            for (int i = 0; i < currentChannels.size(); i++) {
+                LcnDatabaseHelper.Channel c = currentChannels.get(i);
+                if ((pendingFocusChannelId > 0 && c.channelId == pendingFocusChannelId)
+                        || (pendingFocusChannelLcn != null && pendingFocusChannelLcn.equals(c.getDisplayLcn()))) {
+                    targetIdx = i;
+                    break;
+                }
+            }
+            final int posToFocus = targetIdx;
+            pendingFocusChannelId = -1;
+            pendingFocusChannelLcn = null;
+            if (posToFocus >= 0) {
+                focusChannelItem(posToFocus);
+            }
+        }
+    }
+
+    private void focusChannelItem(int pos) {
+        if (railsAdapter == null) return;
+        int railIdx = RailsAdapter.RAIL_CHANNELS;
+        RecyclerView.ViewHolder vh = grid.findViewHolderForAdapterPosition(railIdx);
+        if (vh instanceof RailsAdapter.RailViewHolder) {
+            RecyclerView r = ((RailsAdapter.RailViewHolder) vh).recycler;
+            r.scrollToPosition(pos);
+            Runnable focusTask = new Runnable() {
+                int attempts = 0;
+                @Override
+                public void run() {
+                    attempts++;
+                    RecyclerView.ViewHolder cardVh = r.findViewHolderForAdapterPosition(pos);
+                    View v = cardVh != null ? cardVh.itemView : (r.getLayoutManager() != null ? r.getLayoutManager().findViewByPosition(pos) : null);
+                    if (v != null) {
+                        View card = v.findViewById(R.id.card);
+                        View target = card != null ? card : v;
+                        target.setFocusableInTouchMode(true);
+                        target.requestFocus();
+                        target.setFocusableInTouchMode(false);
+                    } else if (attempts < 6) {
+                        r.postDelayed(this, 50);
+                    }
+                }
+            };
+            r.postDelayed(focusTask, 50);
+        } else {
+            grid.smoothScrollToPosition(railIdx);
+            grid.postDelayed(() -> focusChannelItem(pos), 100);
+        }
     }
 
     private void onChannelSelected(LcnDatabaseHelper.Channel ch) {
@@ -754,33 +814,79 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (ch == null) return;
         android.widget.EditText input = new android.widget.EditText(this);
         input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        input.setSingleLine(true);
+        input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
         input.setText(ch.getDisplayLcn());
         input.setSelection(input.getText().length());
         input.setTextColor(0xFFFFFFFF);
         input.setBackgroundColor(0xFF151D2A);
         input.setPadding(32, 24, 32, 24);
 
-        new android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
                 .setTitle("Edit LCN for " + ch.name)
                 .setMessage("Original default: " + ch.lcn)
                 .setView(input)
-                .setPositiveButton("Save", (dialog, which) -> {
+                .setPositiveButton("Save", (d, which) -> {
                     String newLcn = input.getText().toString().trim();
                     if (!newLcn.isEmpty()) {
                         dbHelper.setCustomLcn(activeProviderId, ch.channelId, newLcn);
                         ch.customLcn = newLcn;
                         Toast.makeText(this, "Updated LCN to " + newLcn, Toast.LENGTH_SHORT).show();
+                        pendingFocusChannelId = ch.channelId;
+                        pendingFocusChannelLcn = newLcn;
                         loadStbChannels();
                     }
                 })
-                .setNeutralButton("Reset Default", (dialog, which) -> {
+                .setNeutralButton("Reset Default", (d, which) -> {
                     dbHelper.setCustomLcn(activeProviderId, ch.channelId, "");
                     ch.customLcn = null;
                     Toast.makeText(this, "Reset to default LCN " + ch.lcn, Toast.LENGTH_SHORT).show();
+                    pendingFocusChannelId = ch.channelId;
+                    pendingFocusChannelLcn = ch.lcn;
                     loadStbChannels();
                 })
                 .setNegativeButton("Cancel", null)
-                .show();
+                .create();
+
+        dialog.setOnShowListener(d -> {
+            android.widget.Button saveBtn = dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE);
+            android.widget.Button resetBtn = dialog.getButton(android.content.DialogInterface.BUTTON_NEUTRAL);
+            android.widget.Button cancelBtn = dialog.getButton(android.content.DialogInterface.BUTTON_NEGATIVE);
+            if (saveBtn != null) saveBtn.setFocusableInTouchMode(true);
+            if (resetBtn != null) resetBtn.setFocusableInTouchMode(true);
+            if (cancelBtn != null) cancelBtn.setFocusableInTouchMode(true);
+
+            input.setOnEditorActionListener((v, actionId, event) -> {
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+                        || (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN)) {
+                    android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
+                    }
+                    if (saveBtn != null) {
+                        saveBtn.requestFocus();
+                    }
+                    return true;
+                }
+                return false;
+            });
+            input.setOnKeyListener((v, keyCode, event) -> {
+                if ((keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_DPAD_DOWN)
+                        && event.getAction() == KeyEvent.ACTION_DOWN) {
+                    android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(input.getWindowToken(), 0);
+                    }
+                    if (saveBtn != null) {
+                        saveBtn.requestFocus();
+                        return true;
+                    }
+                }
+                return false;
+            });
+        });
+
+        dialog.show();
     }
 
     private void tuneChannel(LcnDatabaseHelper.Channel channel) {
@@ -1444,7 +1550,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private void openNetworkPill() {
         Intent i = vpnApp.isEmpty() ? null : getPackageManager().getLeanbackLaunchIntentForPackage(vpnApp);
         if (i == null && !vpnApp.isEmpty()) i = getPackageManager().getLaunchIntentForPackage(vpnApp);
-        open(i != null ? i : systemIntent(Settings.ACTION_WIFI_SETTINGS));
+        if (i != null) {
+            open(i);
+        } else {
+            openSystemSettings(Settings.ACTION_WIFI_SETTINGS);
+        }
+    }
+
+    private void openSystemSettings(String standardAction) {
+        Intent intent = systemIntent(standardAction);
+        try {
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, R.string.not_available, Toast.LENGTH_SHORT).show();
+        }
     }
 
 
@@ -1677,7 +1796,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         addSettingsMenuRow(rows, popup, "TV Home Settings", () -> startActivityForResult(
                 new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
 
-        addSettingsMenuRow(rows, popup, "Android TV Settings", () -> open(systemIntent(Settings.ACTION_SETTINGS)));
+        addSettingsMenuRow(rows, popup, "Android TV Settings", () -> openSystemSettings(Settings.ACTION_SETTINGS));
 
         if (moduleCards) addSettingsMenuRow(rows, popup, getString(R.string.module_cards), this::showModuleCards);
 

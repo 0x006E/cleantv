@@ -43,7 +43,7 @@ CleanTV turns legacy cable/DTH Set-Top Boxes into first-class smart TV experienc
   - Authenticated **AES-256-GCM** encryption with **PBKDF2-SHA256** key derivation from an on-screen TV pairing PIN.
   - HMAC integrity verification prevents tampering and replay attacks.
 - **Thoughtful Remote UX**:
-  - **Live TV Back Key Mapping**: Single press sends STB `BACK` via IR; double-press within 2 seconds cleanly exits back to the Launcher.
+  - **Live TV Exit Navigation**: Single press of Back cleanly exits back to the Launcher; full STB `BACK` and controls remain accessible anytime via the translucent remote sidebar.
   - **Translucent Remote Sidebar**: Access full STB controls on TV without interrupting live video playback.
   - **Settings Backup & Restore**: Export and import complete provider, channel mapping, and custom key configs across devices.
 

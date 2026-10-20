@@ -57,3 +57,4 @@ done
 echo ""
 echo "Debloat complete! Currently disabled packages:"
 adb -s "$TV_DEVICE" shell pm list packages -d
+
