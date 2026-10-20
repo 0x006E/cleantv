@@ -5,11 +5,13 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.media.tv.TvContract;
 import android.net.Uri;
+import android.util.Base64;
 import android.util.Log;
 
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -101,6 +103,10 @@ public final class TvCommandServer {
     }
 
     public synchronized String registerPairedDevice(String clientName, String clientId) {
+        return registerPairedDevice(clientName, clientId, null);
+    }
+
+    public synchronized String registerPairedDevice(String clientName, String clientId, byte[] sessionKey) {
         SharedPreferences sp = context.getSharedPreferences(PREFS_COMPANION, Context.MODE_PRIVATE);
         java.util.Set<String> tokens = new java.util.HashSet<>(sp.getStringSet(PREF_PAIRED_TOKENS, new java.util.HashSet<>()));
         String token = java.util.UUID.randomUUID().toString().replace("-", "");
@@ -109,12 +115,31 @@ public final class TvCommandServer {
         String desc = (clientName != null && !clientName.trim().isEmpty() ? clientName.trim() : "Mobile Companion")
                 + " (Paired " + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(new java.util.Date()) + ")";
 
-        sp.edit()
+        SharedPreferences.Editor ed = sp.edit()
                 .putStringSet(PREF_PAIRED_TOKENS, tokens)
-                .putString("device_" + token, desc)
-                .apply();
-        Log.i(TAG, "Registered new paired device: " + desc + " [token=" + token + "]");
+                .putString("device_" + token, desc);
+
+        if (sessionKey != null) {
+            ed.putString("key_" + token, Base64.encodeToString(sessionKey, Base64.NO_WRAP));
+        }
+
+        ed.apply();
+        Log.i(TAG, "Registered new paired device: " + desc + " [token=" + token + ", hasKey=" + (sessionKey != null) + "]");
         return token;
+    }
+
+    public synchronized byte[] getSessionKey(String token) {
+        if (token == null || token.trim().isEmpty()) return null;
+        SharedPreferences sp = context.getSharedPreferences(PREFS_COMPANION, Context.MODE_PRIVATE);
+        String b64 = sp.getString("key_" + token.trim(), null);
+        if (b64 != null) {
+            try {
+                return Base64.decode(b64, Base64.NO_WRAP);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to decode session key for token: " + token, e);
+            }
+        }
+        return null;
     }
 
     public synchronized boolean isAuthorized(String token) {
@@ -251,6 +276,59 @@ public final class TvCommandServer {
             if (authHeader == null) authHeader = queryParams.get("token");
             String clientToken = extractBearerToken(authHeader);
 
+            // Parse body and handle AES-256-GCM decryption if payload is encrypted
+            boolean isEncryptedRequest = false;
+            byte[] activeSessionKey = null;
+            JSONObject decryptedBodyJson = null;
+
+            if (body.length() > 0) {
+                try {
+                    JSONObject rawBodyJson = new JSONObject(body.toString());
+                    if (rawBodyJson.has("token") && clientToken == null) {
+                        clientToken = rawBodyJson.getString("token");
+                    }
+
+                    if (rawBodyJson.has("iv") && rawBodyJson.has("data")) {
+                        if ("/api/pair".equals(path)) {
+                            // Initial pairing handshake encrypted with PBKDF2 key derived from active PIN
+                            String activePin = getOrGeneratePairingPin();
+                            byte[] pinKey = CryptoUtils.deriveKeyFromPin(activePin);
+                            try {
+                                String dec = CryptoUtils.decryptAesGcm(pinKey, rawBodyJson.getString("iv"), rawBodyJson.getString("data"));
+                                decryptedBodyJson = new JSONObject(dec);
+                                isEncryptedRequest = true;
+                                activeSessionKey = pinKey;
+                            } catch (Exception e) {
+                                Log.w(TAG, "PIN key decryption failed - PIN might not match");
+                            }
+                        } else {
+                            activeSessionKey = getSessionKey(clientToken);
+                            if (activeSessionKey != null) {
+                                String dec = CryptoUtils.decryptAesGcm(activeSessionKey, rawBodyJson.getString("iv"), rawBodyJson.getString("data"));
+                                decryptedBodyJson = new JSONObject(dec);
+                                isEncryptedRequest = true;
+
+                                // Anti-replay check
+                                if (decryptedBodyJson.has("timestamp")) {
+                                    long ts = decryptedBodyJson.getLong("timestamp");
+                                    if (Math.abs(System.currentTimeMillis() - ts) > 120_000) {
+                                        JSONObject err = new JSONObject();
+                                        err.put("success", false);
+                                        err.put("error", "Replay detected or excessive clock skew (>120s)");
+                                        sendResponse(out, 403, "application/json", err.toString());
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        decryptedBodyJson = rawBodyJson;
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error parsing request body", e);
+                }
+            }
+
             JSONObject response = new JSONObject();
             SharedPreferences stbPrefs = context.getSharedPreferences("stb_settings", Context.MODE_PRIVATE);
             SensyIrManager ir = SensyIrManager.getInstance(context);
@@ -266,6 +344,7 @@ public final class TvCommandServer {
                 response.put("hasCustomRemote", stbPrefs.contains("custom_keys_json"));
                 response.put("pairingRequired", true);
                 response.put("isPaired", isAuthorized(clientToken));
+                response.put("hasSessionKey", getSessionKey(clientToken) != null);
                 response.put("pairedDevicesCount", getPairedDeviceCount());
                 sendResponse(out, 200, "application/json", response.toString());
 
@@ -273,22 +352,28 @@ public final class TvCommandServer {
                 String pin = queryParams.get("pin");
                 String clientName = queryParams.get("clientName");
                 String clientId = queryParams.get("clientId");
-                if (body.length() > 0) {
-                    try {
-                        JSONObject bJson = new JSONObject(body.toString());
-                        if (bJson.has("pin")) pin = bJson.getString("pin");
-                        if (bJson.has("clientName")) clientName = bJson.getString("clientName");
-                        if (bJson.has("clientId")) clientId = bJson.getString("clientId");
-                    } catch (Exception ignored) {}
+                if (decryptedBodyJson != null) {
+                    if (decryptedBodyJson.has("pin")) pin = decryptedBodyJson.getString("pin");
+                    if (decryptedBodyJson.has("clientName")) clientName = decryptedBodyJson.getString("clientName");
+                    if (decryptedBodyJson.has("clientId")) clientId = decryptedBodyJson.getString("clientId");
                 }
 
-                if (pin != null && validatePairingPin(pin)) {
-                    String newToken = registerPairedDevice(clientName, clientId);
+                boolean pinValid = isEncryptedRequest || (pin != null && validatePairingPin(pin));
+
+                if (pinValid) {
+                    byte[] newSessionKey = CryptoUtils.generateSessionKey();
+                    String newToken = registerPairedDevice(clientName, clientId, newSessionKey);
                     response.put("success", true);
                     response.put("token", newToken);
+                    response.put("session_key", Base64.encodeToString(newSessionKey, Base64.NO_WRAP));
                     response.put("tvName", "CleanTV (Mi TV 4A)");
-                    response.put("message", "Successfully paired companion mobile app!");
-                    sendResponse(out, 200, "application/json", response.toString());
+                    response.put("message", "Successfully paired companion mobile app with AES-256-GCM encryption!");
+
+                    if (isEncryptedRequest && activeSessionKey != null) {
+                        sendEncryptedResponse(out, activeSessionKey, response);
+                    } else {
+                        sendResponse(out, 200, "application/json", response.toString());
+                    }
                 } else {
                     response.put("success", false);
                     response.put("error", "Invalid pairing code. Check the 6-digit code in TV Settings -> Companion App.");
@@ -297,16 +382,17 @@ public final class TvCommandServer {
 
             } else if ("/api/unpair".equals(path) && "POST".equals(method)) {
                 String tokenToUnpair = clientToken;
-                if (body.length() > 0) {
-                    try {
-                        JSONObject bJson = new JSONObject(body.toString());
-                        if (bJson.has("token")) tokenToUnpair = bJson.getString("token");
-                    } catch (Exception ignored) {}
+                if (decryptedBodyJson != null && decryptedBodyJson.has("token")) {
+                    tokenToUnpair = decryptedBodyJson.getString("token");
                 }
                 unpairDevice(tokenToUnpair);
                 response.put("success", true);
                 response.put("message", "Device unpaired successfully");
-                sendResponse(out, 200, "application/json", response.toString());
+                if (isEncryptedRequest && activeSessionKey != null) {
+                    sendEncryptedResponse(out, activeSessionKey, response);
+                } else {
+                    sendResponse(out, 200, "application/json", response.toString());
+                }
 
             } else if ("/api/blast".equals(path) && "POST".equals(method)) {
                 if (!isAuthorized(clientToken)) {
@@ -318,13 +404,10 @@ public final class TvCommandServer {
 
                 String hex = queryParams.get("hex");
                 int bits = 32;
-                if (body.length() > 0) {
-                    try {
-                        JSONObject bodyJson = new JSONObject(body.toString());
-                        if (bodyJson.has("hex")) hex = bodyJson.getString("hex");
-                        if (bodyJson.has("bits")) bits = bodyJson.getInt("bits");
-                        if (bodyJson.has("bitLength")) bits = bodyJson.getInt("bitLength");
-                    } catch (Exception ignored) {}
+                if (decryptedBodyJson != null) {
+                    if (decryptedBodyJson.has("hex")) hex = decryptedBodyJson.getString("hex");
+                    if (decryptedBodyJson.has("bits")) bits = decryptedBodyJson.getInt("bits");
+                    if (decryptedBodyJson.has("bitLength")) bits = decryptedBodyJson.getInt("bitLength");
                 }
                 if (queryParams.containsKey("bits")) {
                     try { bits = Integer.parseInt(queryParams.get("bits")); } catch (Exception ignored) {}
@@ -339,7 +422,11 @@ public final class TvCommandServer {
                     response.put("success", true);
                     response.put("blasted", hex);
                     response.put("bitLength", bits);
-                    sendResponse(out, 200, "application/json", response.toString());
+                    if (isEncryptedRequest && activeSessionKey != null) {
+                        sendEncryptedResponse(out, activeSessionKey, response);
+                    } else {
+                        sendResponse(out, 200, "application/json", response.toString());
+                    }
                 } else {
                     response.put("success", false);
                     response.put("error", "Missing hex parameter");
@@ -354,14 +441,29 @@ public final class TvCommandServer {
                     return;
                 }
 
-                if (body.length() > 0) {
-                    stbPrefs.edit().putString("custom_keys_json", body.toString()).apply();
+                String keysJson = null;
+                if (decryptedBodyJson != null) {
+                    if (decryptedBodyJson.has("keys")) {
+                        keysJson = decryptedBodyJson.get("keys").toString();
+                    } else {
+                        keysJson = decryptedBodyJson.toString();
+                    }
+                } else if (body.length() > 0) {
+                    keysJson = body.toString();
+                }
+
+                if (keysJson != null && !keysJson.isEmpty()) {
+                    stbPrefs.edit().putString("custom_keys_json", keysJson).apply();
                     if (listener != null) {
                         listener.onCustomRemoteUpdated();
                     }
                     response.put("success", true);
                     response.put("message", "Custom remote saved successfully");
-                    sendResponse(out, 200, "application/json", response.toString());
+                    if (isEncryptedRequest && activeSessionKey != null) {
+                        sendEncryptedResponse(out, activeSessionKey, response);
+                    } else {
+                        sendResponse(out, 200, "application/json", response.toString());
+                    }
                 } else {
                     response.put("success", false);
                     response.put("error", "Empty body");
@@ -377,7 +479,13 @@ public final class TvCommandServer {
                 }
 
                 String customJson = stbPrefs.getString("custom_keys_json", "{}");
-                sendResponse(out, 200, "application/json", customJson);
+                if (isEncryptedRequest && activeSessionKey != null) {
+                    response.put("success", true);
+                    response.put("custom_keys", new JSONObject(customJson));
+                    sendEncryptedResponse(out, activeSessionKey, response);
+                } else {
+                    sendResponse(out, 200, "application/json", customJson);
+                }
 
             } else if ("/api/tune".equals(path) && "POST".equals(method)) {
                 if (!isAuthorized(clientToken)) {
@@ -388,22 +496,76 @@ public final class TvCommandServer {
                 }
 
                 String lcn = queryParams.get("lcn");
-                if (body.length() > 0) {
-                    try {
-                        JSONObject bJson = new JSONObject(body.toString());
-                        if (bJson.has("lcn")) lcn = bJson.getString("lcn");
-                    } catch (Exception ignored) {}
+                if (decryptedBodyJson != null && decryptedBodyJson.has("lcn")) {
+                    lcn = decryptedBodyJson.getString("lcn");
                 }
 
-                if (lcn != null && !lcn.isEmpty()) {
-                    tuneChannelAndSwitchAv(lcn, stbPrefs);
-                    response.put("success", true);
-                    response.put("tuned", lcn);
-                    sendResponse(out, 200, "application/json", response.toString());
-                } else {
+                if (lcn == null || lcn.isEmpty()) {
                     response.put("success", false);
                     response.put("error", "Missing lcn parameter");
                     sendResponse(out, 400, "application/json", response.toString());
+                    return;
+                }
+
+                tuneChannelAndSwitchAv(lcn, stbPrefs);
+                response.put("success", true);
+                response.put("tunedLcn", lcn);
+                if (isEncryptedRequest && activeSessionKey != null) {
+                    sendEncryptedResponse(out, activeSessionKey, response);
+                } else {
+                    sendResponse(out, 200, "application/json", response.toString());
+                }
+
+            } else if ("/api/settings/backup".equals(path) && ("GET".equals(method) || "POST".equals(method))) {
+                if (!isAuthorized(clientToken)) {
+                    response.put("success", false);
+                    response.put("error", "Unauthorized. Device not paired with TV.");
+                    sendResponse(out, 401, "application/json", response.toString());
+                    return;
+                }
+
+                String settingsJson = SettingsBackupHelper.exportSettingsJson(context);
+                if (settingsJson != null) {
+                    response.put("success", true);
+                    response.put("settings", new JSONObject(settingsJson));
+                } else {
+                    response.put("success", false);
+                    response.put("error", "Failed to generate settings backup");
+                }
+
+                if (isEncryptedRequest && activeSessionKey != null) {
+                    sendEncryptedResponse(out, activeSessionKey, response);
+                } else {
+                    sendResponse(out, 200, "application/json", response.toString());
+                }
+
+            } else if ("/api/settings/restore".equals(path) && "POST".equals(method)) {
+                if (!isAuthorized(clientToken)) {
+                    response.put("success", false);
+                    response.put("error", "Unauthorized. Device not paired with TV.");
+                    sendResponse(out, 401, "application/json", response.toString());
+                    return;
+                }
+
+                String jsonToRestore = null;
+                if (decryptedBodyJson != null) {
+                    if (decryptedBodyJson.has("settings")) {
+                        jsonToRestore = decryptedBodyJson.get("settings").toString();
+                    } else {
+                        jsonToRestore = decryptedBodyJson.toString();
+                    }
+                } else if (body.length() > 0) {
+                    jsonToRestore = body.toString();
+                }
+
+                boolean ok = SettingsBackupHelper.importSettingsJson(context, jsonToRestore);
+                response.put("success", ok);
+                response.put("message", ok ? "Settings restored successfully" : "Failed to import settings");
+
+                if (isEncryptedRequest && activeSessionKey != null) {
+                    sendEncryptedResponse(out, activeSessionKey, response);
+                } else {
+                    sendResponse(out, ok ? 200 : 400, "application/json", response.toString());
                 }
 
             } else {
@@ -413,6 +575,16 @@ public final class TvCommandServer {
 
         } catch (Exception e) {
             Log.e(TAG, "Error handling client request", e);
+        }
+    }
+
+    private void sendEncryptedResponse(OutputStream out, byte[] key, JSONObject payload) throws Exception {
+        try {
+            JSONObject enc = CryptoUtils.encryptAesGcm(key, payload.toString());
+            sendResponse(out, 200, "application/json", enc.toString());
+        } catch (Exception e) {
+            Log.e(TAG, "sendEncryptedResponse error", e);
+            sendResponse(out, 500, "application/json", "{\"success\":false,\"error\":\"Encryption failure\"}");
         }
     }
 

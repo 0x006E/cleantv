@@ -8,12 +8,22 @@ import android.content.IntentFilter
 import android.database.sqlite.SQLiteDatabase
 import android.hardware.usb.*
 import android.os.Build
+import android.util.Base64
 import com.facebook.react.bridge.*
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.charset.StandardCharsets
+import java.security.SecureRandom
+import java.security.spec.KeySpec
+import javax.crypto.Cipher
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
+import javax.crypto.spec.SecretKeySpec
+import org.json.JSONObject
 
 class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
@@ -504,8 +514,127 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
     @ReactMethod
     fun clearAuthToken(promise: Promise) {
         val sp = reactContext.getSharedPreferences("tv_beaming", Context.MODE_PRIVATE)
-        sp.edit().remove("auth_token").apply()
+        sp.edit().remove("auth_token").remove("active_session_key").apply()
         promise.resolve(true)
+    }
+
+    @ReactMethod
+    fun derivePinKey(pin: String, promise: Promise) {
+        try {
+            val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            val salt = "CleanTV-Companion-Salt-v1".toByteArray(StandardCharsets.UTF_8)
+            val spec = PBEKeySpec(pin.toCharArray(), salt, 10000, 256)
+            val tmp = factory.generateSecret(spec)
+            val b64 = Base64.encodeToString(tmp.encoded, Base64.NO_WRAP)
+            promise.resolve(b64)
+        } catch (e: Exception) {
+            promise.reject("CRYPTO_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun encryptPayload(keyB64: String, plaintextJson: String, promise: Promise) {
+        try {
+            val keyBytes = Base64.decode(keyB64, Base64.NO_WRAP)
+            val iv = ByteArray(12)
+            SecureRandom().nextBytes(iv)
+
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            val keySpec = SecretKeySpec(keyBytes, "AES")
+            val gcmSpec = GCMParameterSpec(128, iv)
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+
+            val ciphertext = cipher.doFinal(plaintextJson.toByteArray(StandardCharsets.UTF_8))
+            val map = Arguments.createMap()
+            map.putString("iv", Base64.encodeToString(iv, Base64.NO_WRAP))
+            map.putString("data", Base64.encodeToString(ciphertext, Base64.NO_WRAP))
+            promise.resolve(map)
+        } catch (e: Exception) {
+            promise.reject("CRYPTO_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun decryptPayload(keyB64: String, ivB64: String, cipherB64: String, promise: Promise) {
+        try {
+            val keyBytes = Base64.decode(keyB64, Base64.NO_WRAP)
+            val iv = Base64.decode(ivB64, Base64.NO_WRAP)
+            val ciphertext = Base64.decode(cipherB64, Base64.NO_WRAP)
+
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            val keySpec = SecretKeySpec(keyBytes, "AES")
+            val gcmSpec = GCMParameterSpec(128, iv)
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+
+            val decrypted = cipher.doFinal(ciphertext)
+            promise.resolve(String(decrypted, StandardCharsets.UTF_8))
+        } catch (e: Exception) {
+            promise.reject("CRYPTO_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun saveSessionKey(token: String, keyB64: String, promise: Promise) {
+        val sp = reactContext.getSharedPreferences("tv_beaming", Context.MODE_PRIVATE)
+        sp.edit().putString("session_key_$token", keyB64).putString("active_session_key", keyB64).apply()
+        promise.resolve(true)
+    }
+
+    @ReactMethod
+    fun getSessionKey(token: String?, promise: Promise) {
+        val sp = reactContext.getSharedPreferences("tv_beaming", Context.MODE_PRIVATE)
+        val k = if (token != null) sp.getString("session_key_$token", null) ?: sp.getString("active_session_key", null)
+                else sp.getString("active_session_key", null)
+        promise.resolve(k)
+    }
+
+    @ReactMethod
+    fun exportSettings(promise: Promise) {
+        try {
+            val sp = reactContext.getSharedPreferences("tv_beaming", Context.MODE_PRIVATE)
+            val root = JSONObject()
+            root.put("version", 1)
+            root.put("app", "CleanTV Companion")
+            root.put("exported_at", System.currentTimeMillis())
+
+            val settings = JSONObject()
+            for ((key, value) in sp.all) {
+                if (value != null) {
+                    settings.put(key, value)
+                }
+            }
+            root.put("companion_settings", settings)
+            promise.resolve(root.toString(2))
+        } catch (e: Exception) {
+            promise.reject("EXPORT_FAILED", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun importSettings(jsonStr: String, promise: Promise) {
+        try {
+            val root = JSONObject(jsonStr)
+            val sp = reactContext.getSharedPreferences("tv_beaming", Context.MODE_PRIVATE).edit()
+
+            if (root.has("companion_settings")) {
+                val cs = root.getJSONObject("companion_settings")
+                val it = cs.keys()
+                while (it.hasNext()) {
+                    val k = it.next()
+                    val v = cs.get(k)
+                    if (v is Boolean) sp.putBoolean(k, v)
+                    else if (v is Int) sp.putInt(k, v)
+                    else if (v is Long) sp.putLong(k, v)
+                    else if (v is String) sp.putString(k, v)
+                }
+            } else if (root.has("stb_settings")) {
+                sp.putString("tv_backup_cache", jsonStr)
+            }
+            sp.apply()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("IMPORT_FAILED", e.message, e)
+        }
     }
 
     @ReactMethod

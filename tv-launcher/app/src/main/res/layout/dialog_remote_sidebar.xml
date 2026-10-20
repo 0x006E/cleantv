@@ -181,196 +181,152 @@
                 android:gravity="center_horizontal"
                 android:paddingTop="8dp">
 
-                <!-- Power & Mute -->
+                <!-- Row 1: Primary Controls (Power, Mute, Menu, Exit) -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center"
-                    android:layout_marginBottom="14dp">
+                    android:layout_marginBottom="6dp">
 
                     <TextView
                         android:id="@+id/btn_power"
                         style="@style/TopButtonBase"
                         android:layout_width="0dp"
-                        android:layout_height="42dp"
+                        android:layout_height="32dp"
                         android:layout_weight="1"
                         android:layout_marginStart="0dp"
-                        android:layout_marginEnd="6dp"
+                        android:layout_marginEnd="4dp"
                         android:gravity="center"
-                        android:text="Power"
+                        android:text="⏻"
                         android:textColor="#EF4444"
-                        android:textSize="14sp" />
+                        android:textSize="15sp" />
 
                     <TextView
                         android:id="@+id/btn_mute"
                         style="@style/TopButtonBase"
                         android:layout_width="0dp"
-                        android:layout_height="42dp"
-                        android:layout_weight="1"
-                        android:layout_marginStart="6dp"
-                        android:gravity="center"
-                        android:text="Mute"
-                        android:textSize="14sp" />
-                </LinearLayout>
-
-                <!-- D-Pad Navigation Ring -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:gravity="center"
-                    android:layout_marginBottom="14dp">
-
-                    <TextView
-                        android:id="@+id/btn_dpad_up"
-                        style="@style/TopButtonBase"
-                        android:layout_width="72dp"
-                        android:layout_height="38dp"
-                        android:layout_marginStart="0dp"
-                        android:gravity="center"
-                        android:text="▲"
-                        android:textSize="16sp" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center"
-                        android:layout_marginTop="4dp"
-                        android:layout_marginBottom="4dp">
-
-                        <TextView
-                            android:id="@+id/btn_dpad_left"
-                            style="@style/TopButtonBase"
-                            android:layout_width="72dp"
-                            android:layout_height="42dp"
-                            android:layout_marginStart="0dp"
-                            android:layout_marginEnd="8dp"
-                            android:gravity="center"
-                            android:text="◀"
-                            android:textSize="16sp" />
-
-                        <TextView
-                            android:id="@+id/btn_dpad_ok"
-                            style="@style/TopButtonBase"
-                            android:layout_width="84dp"
-                            android:layout_height="42dp"
-                            android:layout_marginStart="0dp"
-                            android:gravity="center"
-                            android:text="OK"
-                            android:textColor="#FFFFFFFF"
-                            android:textSize="15sp"
-                            android:fontFamily="@font/outfit_medium" />
-
-                        <TextView
-                            android:id="@+id/btn_dpad_right"
-                            style="@style/TopButtonBase"
-                            android:layout_width="72dp"
-                            android:layout_height="42dp"
-                            android:layout_marginStart="8dp"
-                            android:gravity="center"
-                            android:text="▶"
-                            android:textSize="16sp" />
-                    </LinearLayout>
-
-                    <TextView
-                        android:id="@+id/btn_dpad_down"
-                        style="@style/TopButtonBase"
-                        android:layout_width="72dp"
-                        android:layout_height="38dp"
-                        android:layout_marginStart="0dp"
-                        android:gravity="center"
-                        android:text="▼"
-                        android:textSize="16sp" />
-                </LinearLayout>
-
-                <!-- Rockers: Vol +/-, Ch +/- and Recall -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center"
-                    android:layout_marginBottom="14dp">
-
-                    <TextView
-                        android:id="@+id/btn_vol_up"
-                        style="@style/TopButtonBase"
-                        android:layout_width="0dp"
-                        android:layout_height="38dp"
+                        android:layout_height="32dp"
                         android:layout_weight="1"
                         android:layout_marginStart="0dp"
+                        android:layout_marginEnd="4dp"
                         android:gravity="center"
-                        android:text="VOL +"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/btn_recall"
-                        style="@style/TopButtonBase"
-                        android:layout_width="0dp"
-                        android:layout_height="38dp"
-                        android:layout_weight="1"
-                        android:layout_marginStart="6dp"
-                        android:layout_marginEnd="6dp"
-                        android:gravity="center"
-                        android:text="RECALL"
-                        android:textSize="11sp" />
-
-                    <TextView
-                        android:id="@+id/btn_ch_up"
-                        style="@style/TopButtonBase"
-                        android:layout_width="0dp"
-                        android:layout_height="38dp"
-                        android:layout_weight="1"
-                        android:layout_marginStart="0dp"
-                        android:gravity="center"
-                        android:text="CH +"
-                        android:textSize="12sp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center"
-                    android:layout_marginBottom="14dp">
-
-                    <TextView
-                        android:id="@+id/btn_vol_down"
-                        style="@style/TopButtonBase"
-                        android:layout_width="0dp"
-                        android:layout_height="38dp"
-                        android:layout_weight="1"
-                        android:layout_marginStart="0dp"
-                        android:gravity="center"
-                        android:text="VOL −"
-                        android:textSize="12sp" />
+                        android:text="MUTE"
+                        android:textSize="10sp" />
 
                     <TextView
                         android:id="@+id/btn_menu"
                         style="@style/TopButtonBase"
                         android:layout_width="0dp"
-                        android:layout_height="38dp"
+                        android:layout_height="32dp"
                         android:layout_weight="1"
-                        android:layout_marginStart="6dp"
-                        android:layout_marginEnd="6dp"
+                        android:layout_marginStart="0dp"
+                        android:layout_marginEnd="4dp"
                         android:gravity="center"
                         android:text="MENU"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/btn_exit"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="32dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="0dp"
+                        android:gravity="center"
+                        android:text="EXIT"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
+                <!-- Row 2: Rockers Top (Vol+, Recall, Ch+) -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:layout_marginBottom="4dp">
+
+                    <TextView
+                        android:id="@+id/btn_vol_up"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="32dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="0dp"
+                        android:layout_marginEnd="4dp"
+                        android:gravity="center"
+                        android:text="VOL ▲"
                         android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/btn_recall"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="32dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="0dp"
+                        android:layout_marginEnd="4dp"
+                        android:gravity="center"
+                        android:text="LAST"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/btn_ch_up"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="32dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="0dp"
+                        android:gravity="center"
+                        android:text="CH ▲"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <!-- Row 3: Rockers Bottom (Vol-, Info, Ch-) -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:layout_marginBottom="8dp">
+
+                    <TextView
+                        android:id="@+id/btn_vol_down"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="32dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="0dp"
+                        android:layout_marginEnd="4dp"
+                        android:gravity="center"
+                        android:text="VOL ▼"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/btn_info"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="32dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="0dp"
+                        android:layout_marginEnd="4dp"
+                        android:gravity="center"
+                        android:text="INFO"
+                        android:textSize="10sp" />
 
                     <TextView
                         android:id="@+id/btn_ch_down"
                         style="@style/TopButtonBase"
                         android:layout_width="0dp"
-                        android:layout_height="38dp"
+                        android:layout_height="32dp"
                         android:layout_weight="1"
                         android:layout_marginStart="0dp"
                         android:gravity="center"
-                        android:text="CH −"
-                        android:textSize="12sp" />
+                        android:text="CH ▼"
+                        android:textSize="11sp" />
                 </LinearLayout>
 
-                <!-- Numeric Keypad 3x4 -->
+                <!-- Numeric Keypad 3x4 (Compact 32dp buttons) -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -382,9 +338,9 @@
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
                         android:layout_marginBottom="4dp">
-                        <TextView android:id="@+id/btn_num_1" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="1" />
-                        <TextView android:id="@+id/btn_num_2" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:gravity="center" android:text="2" />
-                        <TextView android:id="@+id/btn_num_3" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="3" />
+                        <TextView android:id="@+id/btn_num_1" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="32dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="1" android:textSize="13sp" />
+                        <TextView android:id="@+id/btn_num_2" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="32dp" android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:gravity="center" android:text="2" android:textSize="13sp" />
+                        <TextView android:id="@+id/btn_num_3" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="32dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="3" android:textSize="13sp" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -392,9 +348,9 @@
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
                         android:layout_marginBottom="4dp">
-                        <TextView android:id="@+id/btn_num_4" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="4" />
-                        <TextView android:id="@+id/btn_num_5" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:gravity="center" android:text="5" />
-                        <TextView android:id="@+id/btn_num_6" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="6" />
+                        <TextView android:id="@+id/btn_num_4" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="32dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="4" android:textSize="13sp" />
+                        <TextView android:id="@+id/btn_num_5" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="32dp" android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:gravity="center" android:text="5" android:textSize="13sp" />
+                        <TextView android:id="@+id/btn_num_6" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="32dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="6" android:textSize="13sp" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -402,18 +358,18 @@
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
                         android:layout_marginBottom="4dp">
-                        <TextView android:id="@+id/btn_num_7" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="7" />
-                        <TextView android:id="@+id/btn_num_8" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:gravity="center" android:text="8" />
-                        <TextView android:id="@+id/btn_num_9" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="9" />
+                        <TextView android:id="@+id/btn_num_7" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="32dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="7" android:textSize="13sp" />
+                        <TextView android:id="@+id/btn_num_8" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="32dp" android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:gravity="center" android:text="8" android:textSize="13sp" />
+                        <TextView android:id="@+id/btn_num_9" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="32dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="9" android:textSize="13sp" />
                     </LinearLayout>
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal">
-                        <TextView android:id="@+id/btn_exit" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="EXIT" android:textSize="11sp" />
-                        <TextView android:id="@+id/btn_num_0" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:gravity="center" android:text="0" />
-                        <TextView android:id="@+id/btn_back" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="BACK" android:textSize="11sp" />
+                        <TextView android:id="@+id/btn_back" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="32dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="BACK" android:textSize="10sp" />
+                        <TextView android:id="@+id/btn_num_0" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="32dp" android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:gravity="center" android:text="0" android:textSize="13sp" />
+                        <TextView android:id="@+id/btn_ok" style="@style/TopButtonBase" android:layout_width="0dp" android:layout_height="32dp" android:layout_weight="1" android:layout_marginStart="0dp" android:gravity="center" android:text="OK" android:textSize="10sp" />
                     </LinearLayout>
                 </LinearLayout>
             </LinearLayout>

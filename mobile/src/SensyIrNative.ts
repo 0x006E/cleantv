@@ -179,5 +179,75 @@ export const SensyIr = {
             return { success: false, version: 0, message: 'Not supported on this platform' };
         }
         return SensyIrModule.syncDatabase(customUrl ?? null);
+    },
+
+    /**
+     * Derive 256-bit AES key from 6-digit PIN using PBKDF2WithHmacSHA256
+     */
+    async derivePinKey(pin: string): Promise<string> {
+        if (Platform.OS !== 'android' || !SensyIrModule?.derivePinKey) {
+            throw new Error('Native crypto not available on this platform');
+        }
+        return SensyIrModule.derivePinKey(pin);
+    },
+
+    /**
+     * Encrypt JSON payload with AES-256-GCM
+     */
+    async encryptPayload(keyB64: string, plaintextJson: string): Promise<{ iv: string; data: string }> {
+        if (Platform.OS !== 'android' || !SensyIrModule?.encryptPayload) {
+            throw new Error('Native crypto not available on this platform');
+        }
+        return SensyIrModule.encryptPayload(keyB64, plaintextJson);
+    },
+
+    /**
+     * Decrypt AES-256-GCM payload
+     */
+    async decryptPayload(keyB64: string, ivB64: string, cipherB64: string): Promise<string> {
+        if (Platform.OS !== 'android' || !SensyIrModule?.decryptPayload) {
+            throw new Error('Native crypto not available on this platform');
+        }
+        return SensyIrModule.decryptPayload(keyB64, ivB64, cipherB64);
+    },
+
+    /**
+     * Save active session key for secure communication
+     */
+    async saveSessionKey(token: string, keyB64: string): Promise<boolean> {
+        if (Platform.OS !== 'android' || !SensyIrModule?.saveSessionKey) {
+            return false;
+        }
+        return SensyIrModule.saveSessionKey(token, keyB64);
+    },
+
+    /**
+     * Get active session key
+     */
+    async getSessionKey(token?: string): Promise<string | null> {
+        if (Platform.OS !== 'android' || !SensyIrModule?.getSessionKey) {
+            return null;
+        }
+        return SensyIrModule.getSessionKey(token ?? null);
+    },
+
+    /**
+     * Export all app settings to JSON
+     */
+    async exportSettings(): Promise<string> {
+        if (Platform.OS !== 'android' || !SensyIrModule?.exportSettings) {
+            return '{}';
+        }
+        return SensyIrModule.exportSettings();
+    },
+
+    /**
+     * Import app settings from JSON
+     */
+    async importSettings(jsonStr: string): Promise<boolean> {
+        if (Platform.OS !== 'android' || !SensyIrModule?.importSettings) {
+            return false;
+        }
+        return SensyIrModule.importSettings(jsonStr);
     }
 };

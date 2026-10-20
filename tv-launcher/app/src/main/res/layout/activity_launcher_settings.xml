@@ -151,5 +151,26 @@
             style="@style/SettingsRow"
             android:layout_marginTop="10dp"
             android:text="Forget Paired Mobile Devices" />
+
+        <!-- Settings Backup & Restore -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:text="Backup &amp; Restore"
+            android:textColor="#FFFFFFFF"
+            android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/backupSettingsChoice"
+            style="@style/SettingsRow"
+            android:layout_marginTop="10dp"
+            android:text="Export Settings to File (/sdcard/Download)" />
+
+        <TextView
+            android:id="@+id/restoreSettingsChoice"
+            style="@style/SettingsRow"
+            android:layout_marginTop="10dp"
+            android:text="Import Settings from File (/sdcard/Download)" />
     </LinearLayout>
 </ScrollView>

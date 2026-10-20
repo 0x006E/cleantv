@@ -3,6 +3,8 @@
  * Connects to TvCommandServer running on port 8090
  */
 
+import { SensyIr } from '../SensyIrNative';
+
 export interface TvStatus {
     status: string;
     dongleConnected: boolean;
@@ -58,10 +60,6 @@ export const TvBeamingService = {
     DEFAULT_TV_IP: '100.97.35.51',
     DEFAULT_PORT: 8090,
 
-    /**
-     * Compute full 32-bit NEC hex code from 8-bit Address and 8-bit Command
-     * Example: address=0x14, command=0x8a -> "0x14eb8a75"
-     */
     buildNecHex(address: number, command: number): string {
         const addr = address & 0xff;
         const invAddr = (~address) & 0xff;
@@ -76,25 +74,60 @@ export const TvBeamingService = {
     },
 
     /**
-     * Pair companion app with Mi TV using 6-digit code shown on TV screen
+     * Pair companion app with Mi TV using AES-256-GCM authenticated key agreement derived from 6-digit PIN.
      */
     async pair(tvIp: string, pin: string, clientName: string = 'Pixel 8 Companion'): Promise<{ success: boolean; token: string; message: string }> {
         const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/pair`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 8000);
+
         try {
+            const cleanPin = pin.replace(/\s+/g, '').trim();
+            const pinKey = await SensyIr.derivePinKey(cleanPin);
+
+            // Encrypt handshake payload with PBKDF2 PIN key
+            const payload = JSON.stringify({
+                pin: cleanPin,
+                clientName,
+                clientId: 'pixel8_companion',
+                timestamp: Date.now(),
+            });
+            const enc = await SensyIr.encryptPayload(pinKey, payload);
+
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pin, clientName, clientId: 'pixel8_companion' }),
+                body: JSON.stringify({ iv: enc.iv, data: enc.data }),
                 signal: controller.signal,
             });
             clearTimeout(timeout);
-            const data = await res.json();
-            if (!res.ok || !data.success) {
-                throw new Error(data.error || 'Pairing failed. Check 6-digit PIN on TV.');
+
+            const rawJson = await res.json();
+            if (!res.ok) {
+                throw new Error(rawJson.error || 'Pairing failed. Check 6-digit PIN on TV.');
             }
-            return data;
+
+            let decData: any = rawJson;
+            if (rawJson.iv && rawJson.data) {
+                const decStr = await SensyIr.decryptPayload(pinKey, rawJson.iv, rawJson.data);
+                decData = JSON.parse(decStr);
+            }
+
+            if (!decData.success || !decData.token) {
+                throw new Error(decData.error || 'Pairing rejected by TV');
+            }
+
+            // Persist token and AES-256 session key
+            await SensyIr.saveAuthToken(decData.token);
+            if (decData.session_key) {
+                await SensyIr.saveSessionKey(decData.token, decData.session_key);
+            }
+
+            return {
+                success: true,
+                token: decData.token,
+                message: decData.message || 'Paired securely with AES-256-GCM encryption!',
+            };
         } catch (err: any) {
             clearTimeout(timeout);
             throw err;
@@ -109,15 +142,69 @@ export const TvBeamingService = {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
         try {
-            const res = await fetch(url, {
+            await fetch(url, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ token }),
             });
-            const data = await res.json();
-            return !!data.success;
+            await SensyIr.clearAuthToken();
+            return true;
         } catch {
+            await SensyIr.clearAuthToken();
             return false;
+        }
+    },
+
+    /**
+     * Helper to perform authenticated and AES-256-GCM encrypted POST request to TV
+     */
+    async postEncrypted(tvIp: string, path: string, dataObj: Record<string, any>, token?: string | null): Promise<any> {
+        const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}${path}`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+
+        const sessionKey = await SensyIr.getSessionKey(token ?? undefined);
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        let bodyStr = '';
+        if (sessionKey) {
+            const payload = JSON.stringify({
+                ...dataObj,
+                timestamp: Date.now(),
+            });
+            const enc = await SensyIr.encryptPayload(sessionKey, payload);
+            bodyStr = JSON.stringify({
+                token: token ?? undefined,
+                iv: enc.iv,
+                data: enc.data,
+            });
+        } else {
+            bodyStr = JSON.stringify(dataObj);
+        }
+
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: bodyStr,
+                signal: controller.signal,
+            });
+            clearTimeout(timeout);
+
+            const rawJson = await res.json();
+            if (!res.ok) {
+                throw new Error(rawJson.error || `HTTP ${res.status}`);
+            }
+
+            if (sessionKey && rawJson.iv && rawJson.data) {
+                const decStr = await SensyIr.decryptPayload(sessionKey, rawJson.iv, rawJson.data);
+                return JSON.parse(decStr);
+            }
+            return rawJson;
+        } catch (err: any) {
+            clearTimeout(timeout);
+            throw err;
         }
     },
 
@@ -143,113 +230,57 @@ export const TvBeamingService = {
     },
 
     /**
-     * Beam an IR hex code to the Mi TV to blast via USB dongle
+     * Beam an IR hex code to the Mi TV to blast via USB dongle with AES-256-GCM encryption
      */
     async blast(tvIp: string, hexCode: string, bitLength: number = 32, token?: string | null): Promise<boolean> {
-        const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/blast`;
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const data = await this.postEncrypted(tvIp, '/api/blast', { hex: hexCode, bits: bitLength }, token);
+        return !!data.success;
+    },
 
-        try {
-            const res = await fetch(url, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({ hex: hexCode, bits: bitLength }),
-                signal: controller.signal,
-            });
-            clearTimeout(timeout);
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error || `Blast failed: HTTP ${res.status}`);
-            }
-            const data = await res.json();
-            return !!data.success;
-        } catch (err: any) {
-            clearTimeout(timeout);
-            throw err;
-        }
+    /**
+     * Tune a channel on the Mi TV with AES-256-GCM encryption
+     */
+    async tuneChannel(tvIp: string, lcn: string, token?: string | null): Promise<boolean> {
+        const data = await this.postEncrypted(tvIp, '/api/tune', { lcn }, token);
+        return !!data.success;
     },
 
     /**
      * Beam and save a custom remote keymap to the Mi TV launcher
      */
     async saveCustomRemote(tvIp: string, config: CustomRemoteConfig, token?: string | null): Promise<boolean> {
-        const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/custom-remote`;
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        try {
-            const res = await fetch(url, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(config),
-                signal: controller.signal,
-            });
-            clearTimeout(timeout);
-            if (!res.ok) throw new Error(`Save failed: HTTP ${res.status}`);
-            const data = await res.json();
-            return !!data.success;
-        } catch (err: any) {
-            clearTimeout(timeout);
-            throw err;
-        }
+        const data = await this.postEncrypted(tvIp, '/api/custom-remote', { keys: config }, token);
+        return !!data.success;
     },
 
     /**
      * Fetch the saved custom remote configuration from the Mi TV
      */
     async getCustomRemote(tvIp: string, token?: string | null): Promise<CustomRemoteConfig | null> {
-        const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/custom-remote`;
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        const headers: Record<string, string> = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
         try {
-            const res = await fetch(url, { headers, signal: controller.signal });
-            clearTimeout(timeout);
-            if (!res.ok) return null;
-            const data = await res.json();
+            const data = await this.postEncrypted(tvIp, '/api/custom-remote', { action: 'get' }, token);
             if (data && data.keys) return data as CustomRemoteConfig;
             return null;
         } catch {
-            clearTimeout(timeout);
             return null;
         }
     },
 
     /**
-     * Tune a channel on the Mi TV (IR blast + switch AV1)
+     * Pull complete settings backup from the TV
      */
-    async tuneChannel(tvIp: string, lcn: string, token?: string | null): Promise<boolean> {
-        const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/tune`;
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
+    async pullSettingsFromTv(tvIp: string, token?: string | null): Promise<any> {
+        const data = await this.postEncrypted(tvIp, '/api/settings/backup', {}, token);
+        if (data && data.settings) return data.settings;
+        return data;
+    },
 
-        try {
-            const res = await fetch(url, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({ lcn }),
-                signal: controller.signal,
-            });
-            clearTimeout(timeout);
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error || `Tune failed: HTTP ${res.status}`);
-            }
-            const data = await res.json();
-            return !!data.success;
-        } catch (err: any) {
-            clearTimeout(timeout);
-            throw err;
-        }
+    /**
+     * Push settings backup to restore on the TV
+     */
+    async pushSettingsToTv(tvIp: string, settingsObj: any, token?: string | null): Promise<boolean> {
+        const data = await this.postEncrypted(tvIp, '/api/settings/restore', { settings: settingsObj }, token);
+        return !!data.success;
     },
 };
 

@@ -92,6 +92,8 @@ public final class LauncherSettingsActivity extends Activity {
         TextView resetChannelsChoice = findViewById(R.id.resetChannelsChoice);
         TextView companionPairingChoice = findViewById(R.id.companionPairingChoice);
         TextView forgetCompanionDevicesChoice = findViewById(R.id.forgetCompanionDevicesChoice);
+        TextView backupSettingsChoice = findViewById(R.id.backupSettingsChoice);
+        TextView restoreSettingsChoice = findViewById(R.id.restoreSettingsChoice);
 
         updateStbProviderText(stbProviderChoice, stbPrefs);
         stbProviderChoice.setOnClickListener(v -> startActivity(new Intent(this, StbSetupActivity.class)));
@@ -129,6 +131,46 @@ public final class LauncherSettingsActivity extends Activity {
 
         updateForgetDevicesText(forgetCompanionDevicesChoice);
         forgetCompanionDevicesChoice.setOnClickListener(v -> showForgetDevicesDialog(forgetCompanionDevicesChoice));
+
+        backupSettingsChoice.setOnClickListener(v -> {
+            java.io.File file = SettingsBackupHelper.exportToFile(this);
+            if (file != null) {
+                new AlertDialog.Builder(this)
+                        .setTitle("Backup Exported")
+                        .setMessage("Settings exported successfully to:\n" + file.getAbsolutePath() + "\n\nYou can also export/import directly through the Mobile Companion App.")
+                        .setPositiveButton("OK", null)
+                        .show();
+            } else {
+                Toast.makeText(this, "Failed to write backup file", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        restoreSettingsChoice.setOnClickListener(v -> {
+            java.io.File file = SettingsBackupHelper.getBackupFile(this);
+            if (!file.exists()) {
+                new AlertDialog.Builder(this)
+                        .setTitle("Backup File Not Found")
+                        .setMessage("No backup file found at:\n" + file.getAbsolutePath() + "\n\nPlease place '" + SettingsBackupHelper.BACKUP_FILENAME + "' in Download folder or push settings from the Mobile Companion App.")
+                        .setPositiveButton("OK", null)
+                        .show();
+                return;
+            }
+            new AlertDialog.Builder(this)
+                    .setTitle("Restore Settings")
+                    .setMessage("Restore STB configuration, custom channel numbers, and favourites from:\n" + file.getAbsolutePath() + "?")
+                    .setPositiveButton("Restore", (d, which) -> {
+                        boolean ok = SettingsBackupHelper.importFromFile(this);
+                        if (ok) {
+                            Toast.makeText(this, "Settings restored successfully!", Toast.LENGTH_LONG).show();
+                            updateStbProviderText(stbProviderChoice, stbPrefs);
+                            updateAvInputText(avInputChoice, stbPrefs);
+                        } else {
+                            Toast.makeText(this, "Failed to parse or restore settings", Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        });
 
         refresh();
         columnChoices[Math.max(0, Math.min(columns - 4, 3))].requestFocus();

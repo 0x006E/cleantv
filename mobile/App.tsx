@@ -5,6 +5,7 @@ import {
     StatusBar,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
     ActivityIndicator,
@@ -48,6 +49,9 @@ export default function App() {
     const [dbVersion, setDbVersion] = useState<number>(435);
     const [customDbUrl, setCustomDbUrl] = useState<string>('');
     const [isSyncingDb, setIsSyncingDb] = useState<boolean>(false);
+    const [isBackupDialogOpen, setIsBackupDialogOpen] = useState<boolean>(false);
+    const [backupDataText, setBackupDataText] = useState<string>('');
+    const [isOperatingBackup, setIsOperatingBackup] = useState<boolean>(false);
 
     // Active screen navigation
     const [activeTab, setActiveTab] = useState<'remote' | 'scanner' | 'custom'>('remote');
@@ -318,6 +322,81 @@ export default function App() {
         }
     };
 
+    const handleOpenExport = async () => {
+        try {
+            const data = await SensyIr.exportSettings();
+            setBackupDataText(data);
+            setIsBackupDialogOpen(true);
+        } catch (e: any) {
+            Alert.alert('Export Error', e.message);
+        }
+    };
+
+    const handleApplyImport = async () => {
+        if (!backupDataText.trim()) {
+            Alert.alert('Empty Data', 'Please paste valid JSON settings to import.');
+            return;
+        }
+        try {
+            const ok = await SensyIr.importSettings(backupDataText.trim());
+            if (ok) {
+                Alert.alert('Import Successful', 'Settings have been imported!');
+                setIsBackupDialogOpen(false);
+            } else {
+                Alert.alert('Import Failed', 'Invalid settings format.');
+            }
+        } catch (e: any) {
+            Alert.alert('Import Error', e.message);
+        }
+    };
+
+    const handlePullFromTv = async () => {
+        if (!isPaired || !authToken) {
+            Alert.alert('Pairing Required', 'Please pair with your TV first.');
+            return;
+        }
+        setIsOperatingBackup(true);
+        try {
+            const tvSettings = await TvBeamingService.pullSettingsFromTv(tvIp, authToken);
+            const formatted = JSON.stringify(tvSettings, null, 2);
+            setBackupDataText(formatted);
+            await SensyIr.importSettings(formatted);
+            setIsBackupDialogOpen(true);
+            Alert.alert('Settings Pulled', 'Successfully synced settings from CleanTV!');
+        } catch (e: any) {
+            Alert.alert('Sync Error', e.message);
+        } finally {
+            setIsOperatingBackup(false);
+        }
+    };
+
+    const handlePushToTv = async () => {
+        if (!isPaired || !authToken) {
+            Alert.alert('Pairing Required', 'Please pair with your TV first.');
+            return;
+        }
+        setIsOperatingBackup(true);
+        try {
+            let dataToPush: any = {};
+            if (backupDataText.trim()) {
+                dataToPush = JSON.parse(backupDataText.trim());
+            } else {
+                const local = await SensyIr.exportSettings();
+                dataToPush = JSON.parse(local);
+            }
+            const ok = await TvBeamingService.pushSettingsToTv(tvIp, dataToPush, authToken);
+            if (ok) {
+                Alert.alert('Pushed to TV', 'Settings successfully applied on your TV!');
+            } else {
+                Alert.alert('Push Failed', 'TV rejected the settings update.');
+            }
+        } catch (e: any) {
+            Alert.alert('Push Error', e.message);
+        } finally {
+            setIsOperatingBackup(false);
+        }
+    };
+
     const sendKey = async (keyName: string) => {
         let hex = customRemote.keys[keyName] || keyMap[keyName];
 
@@ -480,6 +559,23 @@ export default function App() {
                             <Text style={{ color: '#38BDF8', fontWeight: 'bold', fontSize: 11 }}>
                                 {isSyncingDb ? 'Syncing...' : 'Sync from CDN'}
                             </Text>
+                        </Button>
+                    </View>
+
+                    {/* Settings Backup & Sync */}
+                    <Separator style={{ marginVertical: 10 }} />
+                    <Text style={styles.tvConfigLabel}>Settings Backup &amp; Sync:</Text>
+                    <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                        <Button variant="outline" size="sm" style={{ flex: 1 }} onPress={handleOpenExport}>
+                            <Text style={{ color: '#F1F5F9', fontSize: 11, fontWeight: 'bold' }}>Export / Edit</Text>
+                        </Button>
+                        <Button variant="outline" size="sm" style={{ flex: 1 }} onPress={handlePullFromTv} disabled={isOperatingBackup || !isPaired}>
+                            <Text style={{ color: '#38BDF8', fontSize: 11, fontWeight: 'bold' }}>
+                                {isOperatingBackup ? '...' : 'Pull from TV'}
+                            </Text>
+                        </Button>
+                        <Button variant="outline" size="sm" style={{ flex: 1 }} onPress={handlePushToTv} disabled={isOperatingBackup || !isPaired}>
+                            <Text style={{ color: '#10B981', fontSize: 11, fontWeight: 'bold' }}>Push to TV</Text>
                         </Button>
                     </View>
                 </View>
@@ -848,6 +944,49 @@ export default function App() {
                             )
                         }
                     />
+                </DialogContent>
+            </Dialog>
+
+            {/* Backup & Restore Settings Dialog */}
+            <Dialog open={isBackupDialogOpen} onOpenChange={setIsBackupDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Backup &amp; Restore Settings</DialogTitle>
+                        <DialogClose onPress={() => setIsBackupDialogOpen(false)} />
+                    </DialogHeader>
+
+                    <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, marginBottom: 8 }}>
+                        Unified CleanTV JSON format. You can copy, edit, or paste settings from the TV or another companion device:
+                    </Text>
+
+                    <TextInput
+                        value={backupDataText}
+                        onChangeText={setBackupDataText}
+                        multiline={true}
+                        numberOfLines={10}
+                        style={{
+                            height: 200,
+                            backgroundColor: '#0B0F19',
+                            color: '#38BDF8',
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                            padding: 10,
+                            borderWidth: 1,
+                            borderColor: theme.colors.border,
+                            borderRadius: 0,
+                            textAlignVertical: 'top',
+                            marginBottom: 12,
+                        }}
+                    />
+
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <Button variant="default" style={{ flex: 1 }} onPress={handleApplyImport}>
+                            <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 12 }}>Import JSON</Text>
+                        </Button>
+                        <Button variant="outline" style={{ flex: 1 }} onPress={() => setIsBackupDialogOpen(false)}>
+                            <Text style={{ color: theme.colors.foreground, fontSize: 12 }}>Close</Text>
+                        </Button>
+                    </View>
                 </DialogContent>
             </Dialog>
         </SafeAreaView>

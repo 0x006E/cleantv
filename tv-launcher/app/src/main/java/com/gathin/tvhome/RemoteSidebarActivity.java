@@ -172,16 +172,12 @@ public class RemoteSidebarActivity extends Activity {
         bindKey(R.id.btn_vol_down, "VOL DOWN");
         bindKey(R.id.btn_ch_up, "CH UP");
         bindKey(R.id.btn_ch_down, "CH DOWN");
-        bindKey(R.id.btn_dpad_up, "UP");
-        bindKey(R.id.btn_dpad_down, "DOWN");
-        bindKey(R.id.btn_dpad_left, "LEFT");
-        bindKey(R.id.btn_dpad_right, "RIGHT");
-        bindKey(R.id.btn_dpad_ok, "OK");
         bindKey(R.id.btn_menu, "MENU");
         bindKey(R.id.btn_back, "BACK");
         bindKey(R.id.btn_exit, "EXIT");
-
         bindKey(R.id.btn_recall, "RECALL");
+        bindKey(R.id.btn_info, "INFO");
+        bindKey(R.id.btn_ok, "OK");
 
         bindKey(R.id.btn_num_0, "0");
         bindKey(R.id.btn_num_1, "1");
