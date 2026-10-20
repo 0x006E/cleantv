@@ -32,6 +32,13 @@ public class HomeKeyService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        android.accessibilityservice.AccessibilityServiceInfo info = getServiceInfo();
+        if (info == null) info = new android.accessibilityservice.AccessibilityServiceInfo();
+        info.eventTypes = AccessibilityEvent.TYPES_ALL_MASK;
+        info.feedbackType = android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_GENERIC;
+        info.flags |= android.accessibilityservice.AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS;
+        setServiceInfo(info);
+
         settingsScancodes = getResources().getIntArray(R.array.settings_key_scancodes);
         settingsKeycodes = getResources().getIntArray(R.array.settings_key_keycodes);
     }
@@ -44,6 +51,7 @@ public class HomeKeyService extends AccessibilityService {
     }
 
     private void openSidebar() {
+        android.util.Log.i("HomeKeyService", "Opening RemoteSidebarActivity");
         Intent intent = new Intent(this, RemoteSidebarActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(intent);
@@ -52,6 +60,7 @@ public class HomeKeyService extends AccessibilityService {
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
+        android.util.Log.d("HomeKeyService", "Key: action=" + event.getAction() + " code=" + keyCode + " repeat=" + event.getRepeatCount());
 
         // Stock launcher handled remote Settings button
         if (isSettingsKey(event)) {
@@ -62,11 +71,17 @@ public class HomeKeyService extends AccessibilityService {
         }
 
         // Long-press round center button to open translucent sidebar over AV1 / any input
-        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 if (event.getRepeatCount() == 0) {
                     isCenterLongPressed = false;
-                    handler.postDelayed(centerLongPressRunnable, 550);
+                    handler.removeCallbacks(centerLongPressRunnable);
+                    handler.postDelayed(centerLongPressRunnable, 400);
+                } else if (event.getRepeatCount() >= 2 && !isCenterLongPressed) {
+                    isCenterLongPressed = true;
+                    handler.removeCallbacks(centerLongPressRunnable);
+                    openSidebar();
+                    return true;
                 }
             } else if (event.getAction() == KeyEvent.ACTION_UP) {
                 handler.removeCallbacks(centerLongPressRunnable);
@@ -78,8 +93,8 @@ public class HomeKeyService extends AccessibilityService {
             return false;
         }
 
-        // Menu button opens translucent sidebar
-        if (keyCode == KeyEvent.KEYCODE_MENU) {
+        // Dedicated remote buttons that open sidebar: MENU, WINDOW, GUIDE, INFO
+        if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_WINDOW || keyCode == KeyEvent.KEYCODE_GUIDE) {
             if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
                 openSidebar();
                 return true;

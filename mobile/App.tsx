@@ -33,7 +33,7 @@ export default function App() {
     });
 
     // Wi-Fi Beaming to Mi TV
-    const [tvIp, setTvIp] = useState<string>('192.168.1.50');
+    const [tvIp, setTvIp] = useState<string>('100.97.35.51');
     const [isTvConnected, setIsTvConnected] = useState<boolean>(false);
     const [isCheckingTv, setIsCheckingTv] = useState<boolean>(false);
     const [showTvConfig, setShowTvConfig] = useState<boolean>(false);
@@ -87,19 +87,27 @@ export default function App() {
             const st = await TvBeamingService.checkStatus(ipToTest);
             setIsTvConnected(true);
             setLastLog(`Connected to Mi TV (${st.providerTitle})`);
+            SensyIr.saveTvIp(ipToTest).catch(() => {});
             // Load custom remote from TV if available
             const savedCustom = await TvBeamingService.getCustomRemote(ipToTest);
             if (savedCustom && savedCustom.keys) {
                 setCustomRemote(savedCustom);
             }
-        } catch {
+        } catch (err: any) {
             setIsTvConnected(false);
+            setLastLog(`TV Error: ${err.message || 'Connection failed'}`);
         } finally {
             setIsCheckingTv(false);
         }
     };
 
     useEffect(() => {
+        SensyIr.getSavedTvIp().then((saved) => {
+            if (saved) {
+                setTvIp(saved);
+                checkTv(saved);
+            }
+        }).catch(() => {});
         checkUsb();
         checkTv();
         const usbTimer = setInterval(checkUsb, 3000);

@@ -98,7 +98,9 @@ public class ChannelsAdapter extends RecyclerView.Adapter<ChannelsAdapter.Channe
             }
             holder.lcn.setText(ch.lcn);
             holder.lcn.setVisibility(View.VISIBLE);
-            holder.name.setText(ch.name);
+            holder.genre.setVisibility(View.GONE);
+            holder.name.setText(ch.lcn + " · " + ch.name);
+            holder.name.setVisibility(View.INVISIBLE);
 
             int logoRes = getChannelLogoRes(ch.channelId);
             if (logoRes != 0) {
@@ -121,22 +123,20 @@ public class ChannelsAdapter extends RecyclerView.Adapter<ChannelsAdapter.Channe
             });
 
             holder.card.setOnFocusChangeListener((v, hasFocus) -> {
-                if (hasFocus) {
-                    v.animate().scaleX(1.08f).scaleY(1.08f).translationZ(8f).setDuration(160).start();
-                    if (listener != null) listener.onChannelFocus(ch, v);
-                } else {
-                    v.animate().scaleX(1.0f).scaleY(1.0f).translationZ(0f).setDuration(120).start();
+                TvDesignTokens.animateFocus(v, holder.name, hasFocus);
+                if (hasFocus && listener != null) {
+                    listener.onChannelFocus(ch, v);
                 }
             });
         } else {
             // "Browse All" / "Guide" Card at the end of the shelf
-            holder.genre.setText("ALL CHANNELS");
-            holder.genre.setTextColor(0xFF38BDF8);
+            holder.genre.setVisibility(View.GONE);
             holder.lcn.setText("GUIDE");
             holder.lcn.setVisibility(View.VISIBLE);
-            holder.name.setText("All Channels...");
-            holder.logo.setImageDrawable(null);
-            holder.logo.setVisibility(View.GONE);
+            holder.name.setText("All Channels · Guide");
+            holder.name.setVisibility(View.INVISIBLE);
+            holder.logo.setImageResource(R.drawable.ic_livetv);
+            holder.logo.setVisibility(View.VISIBLE);
 
             holder.card.setOnClickListener(v -> {
                 if (listener != null) listener.onBrowseAllClick();
@@ -144,13 +144,9 @@ public class ChannelsAdapter extends RecyclerView.Adapter<ChannelsAdapter.Channe
             holder.card.setOnLongClickListener(null);
 
             holder.card.setOnFocusChangeListener((v, hasFocus) -> {
-                if (hasFocus) {
-                    v.animate().scaleX(1.08f).scaleY(1.08f).translationZ(8f).setDuration(160).start();
-                    if (listener != null) {
-                        listener.onChannelFocus(new LcnDatabaseHelper.Channel("GUIDE", "All Channels · Guide", "GUIDE", ""), v);
-                    }
-                } else {
-                    v.animate().scaleX(1.0f).scaleY(1.0f).translationZ(0f).setDuration(120).start();
+                TvDesignTokens.animateFocus(v, holder.name, hasFocus);
+                if (hasFocus && listener != null) {
+                    listener.onChannelFocus(new LcnDatabaseHelper.Channel("GUIDE", "All Channels · Guide", "GUIDE", ""), v);
                 }
             });
         }

@@ -2,63 +2,52 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:paddingTop="12dp"
-    android:paddingBottom="12dp"
-    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:paddingTop="6dp"
+    android:paddingBottom="10dp"
     android:clipChildren="false"
     android:clipToPadding="false">
 
-    <!-- Left Rail Section Header (Classic Android TV Rail Badge) -->
+    <!-- Section Header (Classic Google Android TV Section Header above row) -->
     <LinearLayout
         android:id="@+id/rail_header"
-        android:layout_width="100dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:paddingEnd="12dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="48dp"
+        android:paddingEnd="48dp"
+        android:paddingBottom="4dp"
         android:focusable="false">
 
-        <FrameLayout
-            android:id="@+id/rail_badge"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="@drawable/remote_circle_btn_bg">
-
-            <ImageView
-                android:id="@+id/rail_icon"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:layout_gravity="center"
-                android:tint="#FFFFFFFF"
-                android:src="@drawable/ic_apps"
-                android:contentDescription="@null" />
-        </FrameLayout>
+        <ImageView
+            android:id="@+id/rail_icon"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:tint="#A1A1AA"
+            android:src="@drawable/ic_apps"
+            android:contentDescription="@null" />
 
         <TextView
             android:id="@+id/rail_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:gravity="center"
-            android:text="Apps"
-            android:textColor="#A1A1AA"
-            android:textSize="12sp"
+            android:layout_marginStart="8dp"
+            android:text="Favourite apps"
+            android:textColor="#E4E4E7"
+            android:textSize="14sp"
             android:fontFamily="@font/outfit_medium"
-            android:letterSpacing="0.05"
             android:singleLine="true" />
     </LinearLayout>
 
     <!-- Horizontal Row Cards -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rail_recycler"
-        android:layout_width="0dp"
-        android:layout_weight="1"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:paddingStart="40dp"
+        android:paddingEnd="48dp"
         android:clipChildren="false"
         android:clipToPadding="false"
-        android:overScrollMode="never"
-        android:scrollbars="none"
-        android:descendantFocusability="afterDescendants" />
+        android:overScrollMode="never" />
 </LinearLayout>
-

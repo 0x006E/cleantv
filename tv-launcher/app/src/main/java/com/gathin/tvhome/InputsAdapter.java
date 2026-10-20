@@ -63,6 +63,7 @@ public class InputsAdapter extends RecyclerView.Adapter<InputsAdapter.ViewHolder
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         InputItem item = items.get(position);
         holder.title.setText(item.title);
+        holder.title.setVisibility(View.INVISIBLE);
         holder.badge.setText(item.badge);
         holder.icon.setImageResource(item.iconRes);
 
@@ -71,11 +72,9 @@ public class InputsAdapter extends RecyclerView.Adapter<InputsAdapter.ViewHolder
         });
 
         holder.card.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus) {
-                v.animate().scaleX(1.08f).scaleY(1.08f).translationZ(8f).setDuration(160).start();
-                if (listener != null) listener.onInputFocus(item, v);
-            } else {
-                v.animate().scaleX(1.0f).scaleY(1.0f).translationZ(0f).setDuration(120).start();
+            TvDesignTokens.animateFocus(v, holder.title, hasFocus);
+            if (hasFocus && listener != null) {
+                listener.onInputFocus(item, v);
             }
         });
 

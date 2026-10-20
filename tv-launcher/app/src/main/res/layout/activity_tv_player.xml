@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FF000000"
+    android:keepScreenOn="true">
+
+    <android.media.tv.TvView
+        android:id="@+id/tv_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- OSD Banner (Channel info / Input status overlay) -->
+    <LinearLayout
+        android:id="@+id/osd_banner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginStart="48dp"
+        android:layout_marginTop="36dp"
+        android:background="@drawable/glass_panel"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:gravity="center_vertical"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/osd_icon"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/ic_av"
+            android:tint="#FFFFFFFF"
+            android:contentDescription="@null" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/osd_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="AV1 (Kerala Vision STB)"
+                android:textColor="#FFFFFFFF"
+                android:textSize="18sp"
+                android:fontFamily="@font/outfit_medium" />
+
+            <TextView
+                android:id="@+id/osd_subtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Press OK or MENU for Remote Sidebar"
+                android:textColor="#A1A1AA"
+                android:textSize="12sp"
+                android:fontFamily="@font/outfit" />
+        </LinearLayout>
+    </LinearLayout>
+
+</FrameLayout>
+

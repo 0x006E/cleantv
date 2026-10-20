@@ -167,6 +167,29 @@ public class LcnDatabaseHelper {
         return list;
     }
 
+    public Provider getProviderById(int providerId) {
+        SQLiteDatabase db = getDb();
+        if (db == null) return null;
+        String sql = "SELECT p.id, p.title, p.type, p.group_id, b.title as brand_title " +
+                "FROM providers p " +
+                "LEFT JOIN provider_brands b ON p.brand_id = b.id " +
+                "WHERE p.id = ?";
+        try (Cursor cursor = db.rawQuery(sql, new String[]{String.valueOf(providerId)})) {
+            if (cursor.moveToFirst()) {
+                return new Provider(
+                        cursor.getInt(0),
+                        cursor.getString(1),
+                        cursor.getString(2),
+                        cursor.getInt(3),
+                        cursor.getString(4) != null ? cursor.getString(4) : ""
+                );
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "getProviderById error", e);
+        }
+        return null;
+    }
+
     public List<RemoteModel> getRemotesForProvider(int providerId) {
         List<RemoteModel> list = new ArrayList<>();
         SQLiteDatabase db = getDb();
@@ -229,10 +252,31 @@ public class LcnDatabaseHelper {
                 String code = c.getString(1);
                 String keyName = mapKeyIdToName(keyId);
                 map.put(keyName, code);
+                if (keyName.contains(" ")) {
+                    map.put(keyName.replace(" ", "_"), code);
+                }
             }
         } catch (Exception e) {
             Log.e(TAG, "getKeyCodes error", e);
         }
+
+        // Sanity fix for database entries where CH UP was erroneously assigned the DOWN code (e.g. Remote 184):
+        String upCode = map.get("UP");
+        String downCode = map.get("DOWN");
+        String chUpCode = map.get("CH UP");
+        String chDownCode = map.get("CH DOWN");
+
+        if (upCode != null && (chUpCode == null || (downCode != null && chUpCode.equalsIgnoreCase(downCode)))) {
+            map.put("CH UP", upCode);
+            map.put("CH_UP", upCode);
+            map.put("CHANNEL_UP", upCode);
+        }
+        if (downCode != null && (chDownCode == null || chDownCode.isEmpty())) {
+            map.put("CH DOWN", downCode);
+            map.put("CH_DOWN", downCode);
+            map.put("CHANNEL_DOWN", downCode);
+        }
+
         return map;
     }
 
@@ -261,6 +305,13 @@ public class LcnDatabaseHelper {
         } catch (Exception e) {
             Log.e(TAG, "getChannelsForProvider error", e);
         }
+
+        // If this provider (e.g. regional cable operator like Kerala Vision) has no bundled channels
+        // in offline lcndb.db, fall back to default lineup (provider 43) so channels are always available.
+        if (list.isEmpty() && providerId != 43) {
+            return getChannelsForProvider(43, limit);
+        }
+
         return list;
     }
 

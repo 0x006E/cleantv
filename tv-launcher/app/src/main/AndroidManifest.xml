@@ -50,7 +50,7 @@
             android:clearTaskOnLaunch="true"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden|uiMode"
             android:screenOrientation="landscape">
-            <intent-filter>
+            <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -64,9 +64,24 @@
 
         <activity
             android:name=".LauncherSettingsActivity"
-            android:exported="false"
+            android:exported="true"
             android:excludeFromRecents="true"
             android:screenOrientation="landscape" />
+        <activity
+            android:name=".StbSetupActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.TvHome.Translucent"
+            android:windowSoftInputMode="stateHidden|adjustPan" />
+        <activity
+            android:name=".TvPlayerActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:screenOrientation="landscape"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
         <activity
             android:name=".RemoteSidebarActivity"
             android:exported="true"

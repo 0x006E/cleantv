@@ -76,11 +76,11 @@ public class RailsAdapter extends RecyclerView.Adapter<RailsAdapter.RailViewHold
         holder.title.setText(cfg.title);
         holder.icon.setImageResource(cfg.iconRes);
 
-        // Classic Android TV solid circle badge
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(cfg.color);
-        holder.badge.setBackground(bg);
+        // Modern Android TV header style
+        if (holder.icon != null) {
+            holder.icon.setColorFilter((0xCC << 24) | (cfg.color & 0x00FFFFFF));
+        }
+        holder.title.setTextColor(0xFFE4E4E7);
 
         if (holder.recycler.getAdapter() != cfg.adapter) {
             holder.recycler.setAdapter(cfg.adapter);
@@ -98,7 +98,6 @@ public class RailsAdapter extends RecyclerView.Adapter<RailsAdapter.RailViewHold
 
     public static class RailViewHolder extends RecyclerView.ViewHolder {
         final View header;
-        final FrameLayout badge;
         final ImageView icon;
         final TextView title;
         final RecyclerView recycler;
@@ -106,20 +105,22 @@ public class RailsAdapter extends RecyclerView.Adapter<RailsAdapter.RailViewHold
         RailViewHolder(View v) {
             super(v);
             header = v.findViewById(R.id.rail_header);
-            badge = v.findViewById(R.id.rail_badge);
             icon = v.findViewById(R.id.rail_icon);
             title = v.findViewById(R.id.rail_title);
             recycler = v.findViewById(R.id.rail_recycler);
         }
 
         public void focusFirstItem() {
-            if (recycler.getChildCount() > 0) {
-                View child = recycler.getChildAt(0);
-                View card = child.findViewById(R.id.card);
-                if (card == null) card = child.findViewById(R.id.channel_card);
-                if (card == null) card = child.findViewById(R.id.input_card);
-                if (card != null) card.requestFocus();
-            }
+            recycler.post(() -> {
+                RecyclerView.ViewHolder vh = recycler.findViewHolderForAdapterPosition(0);
+                View v = vh != null ? vh.itemView : (recycler.getChildCount() > 0 ? recycler.getChildAt(0) : null);
+                if (v != null) {
+                    View card = v.findViewById(R.id.card);
+                    if (card == null) card = v.findViewById(R.id.channel_card);
+                    if (card == null) card = v.findViewById(R.id.input_card);
+                    if (card != null) card.requestFocus();
+                }
+            });
         }
     }
 }

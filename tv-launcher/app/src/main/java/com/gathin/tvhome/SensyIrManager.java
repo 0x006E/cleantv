@@ -267,17 +267,18 @@ public class SensyIrManager {
         }
 
         List<Integer> list = new ArrayList<>();
-        list.add(9000);
-        list.add(4500);
+        // Sensy hardware carrier cycle counts (at 38kHz):
+        // Header: 342 cycles mark (~9000µs), 171 cycles space (~4500µs)
+        list.add(342);
+        list.add(171);
 
         for (int bit = bitLength - 1; bit >= 0; bit--) {
-            list.add(560);
+            list.add(21); // Mark: 21 cycles (~553µs)
             boolean isSet = (numericVal & (1L << bit)) != 0;
-            list.add(isSet ? 1690 : 560);
+            list.add(isSet ? 60 : 21); // Space: 60 cycles (~1579µs) for '1', 21 cycles (~553µs) for '0'
         }
 
-        list.add(560);
-        list.add(40000);
+        list.add(21); // Stop bit mark: 21 cycles
 
         int[] arr = new int[list.size()];
         for (int i = 0; i < list.size(); i++) {

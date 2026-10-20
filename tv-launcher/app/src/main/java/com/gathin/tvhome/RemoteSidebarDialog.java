@@ -2,6 +2,7 @@ package com.gathin.tvhome;
 
 import android.app.Dialog;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
@@ -146,6 +147,17 @@ public class RemoteSidebarDialog extends Dialog {
             closeBtn.setOnClickListener(v -> dismiss());
         }
 
+        View pairBtn = findViewById(R.id.btn_pair_remote_sidebar);
+        if (pairBtn != null) {
+            pairBtn.setOnClickListener(v -> {
+                dismiss();
+                Intent i = new Intent(getContext(), StbSetupActivity.class);
+                i.putExtra(StbSetupActivity.EXTRA_START_PAIRING, false);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(i);
+            });
+        }
+
         // Tap outside backdrop to dismiss
         View root = findViewById(android.R.id.content);
         if (root != null) {
@@ -185,13 +197,12 @@ public class RemoteSidebarDialog extends Dialog {
         v.setOnClickListener(view -> {
             String hex = keyCodes.get(keyName);
             if ((hex == null || hex.isEmpty()) && "RECALL".equals(keyName)) {
-                for (String alias : new String[]{"PREV", "LAST", "LAST_CH", "KEY_40", "RETURN"}) {
+                for (String alias : new String[]{"PREV", "LAST", "LAST_CH", "KEY_40", "RETURN", "BACK"}) {
                     if (keyCodes.containsKey(alias)) {
                         hex = keyCodes.get(alias);
                         break;
                     }
                 }
-                if (hex == null) hex = "0x14eb8a75";
             }
 
             if (hex != null && !hex.isEmpty()) {

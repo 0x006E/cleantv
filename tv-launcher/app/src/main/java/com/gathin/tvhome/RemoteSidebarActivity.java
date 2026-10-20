@@ -6,14 +6,11 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
-import android.media.tv.TvContract;
-import android.media.tv.TvInputInfo;
-import android.media.tv.TvInputManager;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -38,31 +35,53 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Translucent activity overlay displaying the Apple TV-styled AV1 STB remote and channel browser.
- * Accessible from the home grid, top bar, or via long-press on KEYCODE_DPAD_CENTER / MENU from any input.
+ * Translucent popout sidebar activity for Android TV.
+ * Slides over whatever is on screen (Live TV, AV1, HDMI, Apps), allowing full remote control,
+ * channel browsing, and interactive candidate remote pairing while watching Live TV.
  */
 public class RemoteSidebarActivity extends Activity {
 
-    private final Map<String, String> keyCodes = new HashMap<>();
-    private final List<LcnDatabaseHelper.Channel> channels = new ArrayList<>();
-    private final Handler handler = new Handler(Looper.getMainLooper());
-
-    private int activeProviderId = 43;
-    private String activeProviderTitle = "Kerala Vision Digital";
-    private int activeRemoteId = 43;
-    private int activeRemoteBitLength = 32;
+    public static final String EXTRA_INITIAL_TAB = "extra_initial_tab";
 
     private LcnDatabaseHelper dbHelper;
     private SensyIrManager irManager;
     private SharedPreferences stbPrefs;
 
+    private int activeProviderId = 648;
+    private String activeProviderTitle = "Kerala Vision Digital Network";
+    private int activeRemoteId = 43;
+    private int activeRemoteBitLength = 32;
+
+    private final Map<String, String> keyCodes = new HashMap<>();
+    private final List<LcnDatabaseHelper.Channel> channels = new ArrayList<>();
+    private final List<LcnDatabaseHelper.RemoteModel> candidateRemotes = new ArrayList<>();
+    private int currentCandidateIndex = 0;
+    private final android.util.SparseIntArray logoCache = new android.util.SparseIntArray();
+
+    private SidebarChannelsAdapter channelsAdapter;
+    private RecyclerView channelsList;
     private TextView statusText;
+
     private View tabChannels;
     private View tabRemote;
+    private View tabPairing;
     private View channelsContainer;
     private View remoteContainer;
-    private RecyclerView channelsList;
-    private SidebarChannelsAdapter channelsAdapter;
+    private View pairingContainer;
+
+    private TextView sidebarPairingProvider;
+    private TextView sidebarPairingModel;
+    private TextView sidebarPairingFeedback;
+    private View btnSidebarTestPower;
+    private View btnSidebarTestVolUp;
+    private View btnSidebarTestChUp;
+    private View btnSidebarTestChDown;
+    private View btnSidebarPrevModel;
+    private View btnSidebarNextModel;
+    private View btnSidebarPairConfirm;
+    private View btnSidebarChangeProvider;
+
+    private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -81,8 +100,8 @@ public class RemoteSidebarActivity extends Activity {
         irManager = SensyIrManager.getInstance(this);
         stbPrefs = getSharedPreferences("stb_settings", Context.MODE_PRIVATE);
 
-        activeProviderId = stbPrefs.getInt("provider_id", 43);
-        activeProviderTitle = stbPrefs.getString("provider_title", "Kerala Vision Digital");
+        activeProviderId = stbPrefs.getInt("provider_id", 648);
+        activeProviderTitle = stbPrefs.getString("provider_title", "Kerala Vision Digital Network");
         activeRemoteId = stbPrefs.getInt("remote_id", 43);
         activeRemoteBitLength = stbPrefs.getInt("bit_length", 32);
 
@@ -95,16 +114,29 @@ public class RemoteSidebarActivity extends Activity {
 
         tabChannels = findViewById(R.id.tab_channels);
         tabRemote = findViewById(R.id.tab_remote);
+        tabPairing = findViewById(R.id.tab_pairing);
         channelsContainer = findViewById(R.id.channels_container);
         remoteContainer = findViewById(R.id.remote_container);
+        pairingContainer = findViewById(R.id.pairing_container);
 
-        // Tab Switching
+        // Tab Switching on click and on D-Pad focus change
         if (tabChannels != null) {
-            tabChannels.setSelected(true);
-            tabChannels.setOnClickListener(v -> switchTab(true));
+            tabChannels.setOnClickListener(v -> switchTab(0));
+            tabChannels.setOnFocusChangeListener((v, hasFocus) -> {
+                if (hasFocus) switchTab(0);
+            });
         }
         if (tabRemote != null) {
-            tabRemote.setOnClickListener(v -> switchTab(false));
+            tabRemote.setOnClickListener(v -> switchTab(1));
+            tabRemote.setOnFocusChangeListener((v, hasFocus) -> {
+                if (hasFocus) switchTab(1);
+            });
+        }
+        if (tabPairing != null) {
+            tabPairing.setOnClickListener(v -> switchTab(2));
+            tabPairing.setOnFocusChangeListener((v, hasFocus) -> {
+                if (hasFocus) switchTab(2);
+            });
         }
 
         // Channels Recycler
@@ -149,32 +181,187 @@ public class RemoteSidebarActivity extends Activity {
             closeBtn.setOnClickListener(v -> finish());
         }
 
-        // Tap backdrop to dismiss
-        View root = findViewById(android.R.id.content);
-        if (root != null) {
-            root.setOnClickListener(v -> finish());
+        View pairBtn = findViewById(R.id.btn_pair_remote_sidebar);
+        if (pairBtn != null) {
+            pairBtn.setOnClickListener(v -> switchTab(2));
         }
 
+        // Setup Pairing Tab UI
+        sidebarPairingProvider = findViewById(R.id.sidebar_pairing_provider);
+        sidebarPairingModel = findViewById(R.id.sidebar_pairing_model);
+        sidebarPairingFeedback = findViewById(R.id.sidebar_pairing_feedback);
+        btnSidebarTestPower = findViewById(R.id.btn_sidebar_test_power);
+        btnSidebarTestVolUp = findViewById(R.id.btn_sidebar_test_volup);
+        btnSidebarTestChUp = findViewById(R.id.btn_sidebar_test_chup);
+        btnSidebarTestChDown = findViewById(R.id.btn_sidebar_test_chdown);
+        btnSidebarPrevModel = findViewById(R.id.btn_sidebar_prev_model);
+        btnSidebarNextModel = findViewById(R.id.btn_sidebar_next_model);
+        btnSidebarPairConfirm = findViewById(R.id.btn_sidebar_pair_confirm);
+        btnSidebarChangeProvider = findViewById(R.id.btn_sidebar_change_provider);
+
+        setupPairingControls();
+
+        // Tap backdrop to dismiss (pointer/touch only - NEVER focusable on TV D-pad)
+        View backdrop = findViewById(R.id.sidebar_backdrop);
+        if (backdrop != null) {
+            backdrop.setOnClickListener(v -> finish());
+            backdrop.setFocusable(false);
+            backdrop.setFocusableInTouchMode(false);
+        }
+
+        int initialTab = getIntent().getIntExtra(EXTRA_INITIAL_TAB, 0);
+        switchTab(initialTab);
         loadChannelsAndCodes();
+
+        // Ensure active tab receives crisp initial focus
+        View initialFocus = initialTab == 2 ? tabPairing : (initialTab == 1 ? tabRemote : tabChannels);
+        if (initialFocus != null) {
+            initialFocus.requestFocus();
+        }
+        handler.postDelayed(() -> {
+            if (initialFocus != null && !initialFocus.hasFocus()) {
+                initialFocus.requestFocus();
+            }
+        }, 120);
     }
 
-    private void switchTab(boolean showChannels) {
-        if (tabChannels != null) tabChannels.setSelected(showChannels);
-        if (tabRemote != null) tabRemote.setSelected(!showChannels);
+    private void switchTab(int tabIndex) {
+        if (tabChannels != null) tabChannels.setSelected(tabIndex == 0);
+        if (tabRemote != null) tabRemote.setSelected(tabIndex == 1);
+        if (tabPairing != null) tabPairing.setSelected(tabIndex == 2);
 
-        if (channelsContainer != null) {
-            channelsContainer.setVisibility(showChannels ? View.VISIBLE : View.GONE);
-        }
-        if (remoteContainer != null) {
-            remoteContainer.setVisibility(showChannels ? View.GONE : View.VISIBLE);
+        if (channelsContainer != null) channelsContainer.setVisibility(tabIndex == 0 ? View.VISIBLE : View.GONE);
+        if (remoteContainer != null) remoteContainer.setVisibility(tabIndex == 1 ? View.VISIBLE : View.GONE);
+        if (pairingContainer != null) pairingContainer.setVisibility(tabIndex == 2 ? View.VISIBLE : View.GONE);
+
+        View pairBottomBtn = findViewById(R.id.btn_pair_remote_sidebar);
+        if (pairBottomBtn != null) {
+            pairBottomBtn.setVisibility(tabIndex == 2 ? View.GONE : View.VISIBLE);
         }
 
-        if (showChannels && channelsList != null) {
-            channelsList.requestFocus();
-        } else if (!showChannels) {
-            View okBtn = findViewById(R.id.btn_dpad_ok);
-            if (okBtn != null) okBtn.requestFocus();
+        if (tabIndex == 2) {
+            loadCandidateRemotes();
         }
+    }
+
+    private void setupPairingControls() {
+        if (btnSidebarTestChUp != null) {
+            btnSidebarTestChUp.setOnClickListener(v -> testCandidateKey("CH UP", "CH+"));
+        }
+        if (btnSidebarTestChDown != null) {
+            btnSidebarTestChDown.setOnClickListener(v -> testCandidateKey("CH DOWN", "CH−"));
+        }
+        if (btnSidebarTestPower != null) {
+            btnSidebarTestPower.setOnClickListener(v -> testCandidateKey("POWER", "POWER"));
+        }
+        if (btnSidebarTestVolUp != null) {
+            btnSidebarTestVolUp.setOnClickListener(v -> testCandidateKey("VOL UP", "VOL+"));
+        }
+        if (btnSidebarPrevModel != null) {
+            btnSidebarPrevModel.setOnClickListener(v -> {
+                if (candidateRemotes.isEmpty()) return;
+                currentCandidateIndex = (currentCandidateIndex - 1 + candidateRemotes.size()) % candidateRemotes.size();
+                updatePairingUi();
+            });
+        }
+        if (btnSidebarNextModel != null) {
+            btnSidebarNextModel.setOnClickListener(v -> {
+                if (candidateRemotes.isEmpty()) return;
+                currentCandidateIndex = (currentCandidateIndex + 1) % candidateRemotes.size();
+                updatePairingUi();
+            });
+        }
+        if (btnSidebarPairConfirm != null) {
+            btnSidebarPairConfirm.setOnClickListener(v -> {
+                if (candidateRemotes.isEmpty()) return;
+                LcnDatabaseHelper.RemoteModel current = candidateRemotes.get(currentCandidateIndex);
+                activeRemoteId = current.id;
+                activeRemoteBitLength = current.bitLength;
+                stbPrefs.edit()
+                        .putInt("remote_id", current.id)
+                        .putInt("bit_length", current.bitLength)
+                        .apply();
+                getSharedPreferences("stb_remote_prefs", Context.MODE_PRIVATE).edit()
+                        .putInt("remote_id", current.id)
+                        .putInt("bit_length", current.bitLength)
+                        .apply();
+
+                Toast.makeText(this, "Paired Remote #" + current.id + " for Live TV!", Toast.LENGTH_SHORT).show();
+                loadChannelsAndCodes();
+                switchTab(1);
+            });
+        }
+        if (btnSidebarChangeProvider != null) {
+            btnSidebarChangeProvider.setOnClickListener(v -> {
+                Intent i = new Intent(this, StbSetupActivity.class);
+                i.putExtra(StbSetupActivity.EXTRA_START_PAIRING, false);
+                startActivity(i);
+            });
+        }
+    }
+
+    private void loadCandidateRemotes() {
+        new Thread(() -> {
+            List<LcnDatabaseHelper.RemoteModel> list = dbHelper.getRemotesForProvider(activeProviderId);
+            handler.post(() -> {
+                candidateRemotes.clear();
+                if (list != null && !list.isEmpty()) {
+                    candidateRemotes.addAll(list);
+                    currentCandidateIndex = 0;
+                    for (int i = 0; i < candidateRemotes.size(); i++) {
+                        if (candidateRemotes.get(i).id == activeRemoteId) {
+                            currentCandidateIndex = i;
+                            break;
+                        }
+                    }
+                }
+                updatePairingUi();
+            });
+        }).start();
+    }
+
+    private void updatePairingUi() {
+        if (sidebarPairingProvider != null) sidebarPairingProvider.setText(activeProviderTitle);
+        if (candidateRemotes.isEmpty()) {
+            if (sidebarPairingModel != null) sidebarPairingModel.setText("No remote profiles found for provider");
+            if (sidebarPairingFeedback != null) sidebarPairingFeedback.setText("Using standard default remote");
+            return;
+        }
+        LcnDatabaseHelper.RemoteModel current = candidateRemotes.get(currentCandidateIndex);
+        int total = candidateRemotes.size();
+        if (sidebarPairingModel != null) {
+            sidebarPairingModel.setText("Candidate Model " + (currentCandidateIndex + 1) + " of " + total
+                    + " (Remote #" + current.id + ", " + current.bitLength + "-bit NEC)");
+        }
+        if (sidebarPairingFeedback != null) {
+            sidebarPairingFeedback.setText("Watch Live TV on left while testing buttons");
+        }
+    }
+
+    private void testCandidateKey(String keyName, String display) {
+        if (candidateRemotes.isEmpty()) return;
+        LcnDatabaseHelper.RemoteModel current = candidateRemotes.get(currentCandidateIndex);
+        if (sidebarPairingFeedback != null) {
+            sidebarPairingFeedback.setText("Sending " + display + "...");
+        }
+
+        new Thread(() -> {
+            Map<String, String> keys = dbHelper.getKeyCodes(current.id);
+            String hex = keys.get(keyName);
+            handler.post(() -> {
+                if (hex != null && !hex.isEmpty()) {
+                    irManager.transmitNecAsync(hex, current.bitLength, () -> {
+                        if (sidebarPairingFeedback != null) {
+                            sidebarPairingFeedback.setText("Blasted: " + display + " [" + hex + "]");
+                        }
+                    });
+                } else {
+                    if (sidebarPairingFeedback != null) {
+                        sidebarPairingFeedback.setText("Key " + display + " not on model #" + current.id);
+                    }
+                }
+            });
+        }).start();
     }
 
     private void loadChannelsAndCodes() {
@@ -216,87 +403,25 @@ public class RemoteSidebarActivity extends Activity {
                 keyCodes.putAll(codes);
                 channels.clear();
                 channels.addAll(list);
-                if (channelsAdapter != null) {
-                    channelsAdapter.notifyDataSetChanged();
-                }
-                if (channelsList != null && !channels.isEmpty()) {
-                    channelsList.requestFocus();
+                if (channelsAdapter != null) channelsAdapter.notifyDataSetChanged();
+                if (statusText != null) {
+                    statusText.setText(channels.size() + " channels · Remote #" + activeRemoteId);
                 }
             });
         }).start();
     }
 
-    private void onChannelClicked(LcnDatabaseHelper.Channel ch) {
-        // Increment usage frequency
-        String prefKey = "ch_use_" + activeProviderId + "_" + ch.lcn;
-        int currentCount = stbPrefs.getInt(prefKey, 0);
-        stbPrefs.edit().putInt(prefKey, currentCount + 1).apply();
-
-        Toast.makeText(this, "Tuning " + ch.lcn + " " + ch.name + " (AV1)...", Toast.LENGTH_SHORT).show();
-
-        // Blast IR digits
-        irManager.tuneChannelAsync(ch.lcn, keyCodes, activeRemoteBitLength, null);
-
-        // Switch TV Input to AV1
-        openAvInput();
-
-        // Finish activity overlay so video displays full screen
-        finish();
-    }
-
-    private void openAvInput() {
-        TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
-        if (tim != null) {
-            for (TvInputInfo info : tim.getTvInputList()) {
-                CharSequence label = info.loadLabel(this);
-                String labelStr = label != null ? label.toString().toUpperCase(Locale.ROOT) : "";
-                if (labelStr.contains("AV") || info.getId().toLowerCase(Locale.ROOT).contains("composite") || info.getId().endsWith("/HW3")) {
-                    openInput(info.getId());
-                    return;
-                }
-            }
-        }
-        try {
-            Uri uri = TvContract.buildChannelUriForPassthroughInput("com.xiaomi.mitv.tvinput/.TvInputService/HW3");
-            startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "vnd.android.cursor.item/channel")
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        } catch (Exception e) {
-            android.util.Log.w("RemoteSidebar", "Fallback to default openInput", e);
-        }
-    }
-
-    private void openInput(String inputId) {
-        Uri uri = TvContract.buildChannelUriForPassthroughInput(inputId);
-        Intent view = new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "vnd.android.cursor.item/channel")
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        try {
-            startActivity(view);
-        } catch (Exception e) {
-            android.util.Log.w("RemoteSidebar", "Cannot open input " + inputId, e);
-        }
-    }
-
-    private void bindKey(int resId, String keyName) {
-        View v = findViewById(resId);
+    private void bindKey(int viewId, String keyName) {
+        View v = findViewById(viewId);
         if (v == null) return;
-
         v.setOnClickListener(view -> {
             String hex = keyCodes.get(keyName);
-            if ((hex == null || hex.isEmpty()) && "RECALL".equals(keyName)) {
-                for (String alias : new String[]{"PREV", "LAST", "LAST_CH", "KEY_40", "RETURN"}) {
-                    if (keyCodes.containsKey(alias)) {
-                        hex = keyCodes.get(alias);
-                        break;
-                    }
-                }
-                if (hex == null) hex = "0x14eb8a75";
-            }
-
             if (hex != null && !hex.isEmpty()) {
-                if (statusText != null) statusText.setText("Transmitting " + keyName + "...");
-                final String finalHex = hex;
-                irManager.transmitNecAsync(finalHex, bitLength(), () -> {
-                    if (statusText != null) statusText.setText("Sent " + keyName + " [" + finalHex + "]");
+                if (statusText != null) statusText.setText("Blasting " + keyName + " (" + hex + ")...");
+                irManager.transmitNecAsync(hex, activeRemoteBitLength, () -> {
+                    if (statusText != null) {
+                        statusText.setText("Sent: " + keyName);
+                    }
                 });
             } else {
                 if (statusText != null) statusText.setText("No code for " + keyName);
@@ -304,21 +429,34 @@ public class RemoteSidebarActivity extends Activity {
         });
     }
 
-    private int bitLength() {
-        return activeRemoteBitLength > 0 ? activeRemoteBitLength : 32;
+    private void onChannelClicked(LcnDatabaseHelper.Channel ch) {
+        String prefKey = "ch_use_" + activeProviderId + "_" + ch.lcn;
+        int current = stbPrefs.getInt(prefKey, 0);
+        stbPrefs.edit().putInt(prefKey, current + 1).apply();
+
+        if (statusText != null) statusText.setText("Tuning LCN " + ch.lcn + " " + ch.name + "...");
+        irManager.tuneChannelAsync(ch.lcn, keyCodes, activeRemoteBitLength, () -> {
+            if (statusText != null) statusText.setText("Tuned: " + ch.lcn + " " + ch.name);
+            handler.postDelayed(this::finish, 600);
+        });
     }
 
+    @Override
+    public void onBackPressed() {
+        finish();
+    }
+
+    // RecyclerView Adapter for Channels tab
     private class SidebarChannelsAdapter extends RecyclerView.Adapter<SidebarChannelsAdapter.ViewHolder> {
-        interface OnItemClickListener {
-            void onItemClick(LcnDatabaseHelper.Channel channel);
+        interface Listener {
+            void onChannelClick(LcnDatabaseHelper.Channel ch);
         }
 
-        private final List<LcnDatabaseHelper.Channel> items;
-        private final OnItemClickListener listener;
-        private final android.util.SparseIntArray logoCache = new android.util.SparseIntArray();
+        private final List<LcnDatabaseHelper.Channel> list;
+        private final Listener listener;
 
-        SidebarChannelsAdapter(List<LcnDatabaseHelper.Channel> items, OnItemClickListener listener) {
-            this.items = items;
+        SidebarChannelsAdapter(List<LcnDatabaseHelper.Channel> list, Listener listener) {
+            this.list = list;
             this.listener = listener;
         }
 
@@ -331,7 +469,7 @@ public class RemoteSidebarActivity extends Activity {
 
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-            LcnDatabaseHelper.Channel ch = items.get(position);
+            LcnDatabaseHelper.Channel ch = list.get(position);
             holder.lcn.setText(ch.lcn);
             holder.name.setText(ch.name);
 
@@ -355,19 +493,21 @@ public class RemoteSidebarActivity extends Activity {
 
             int useCount = stbPrefs.getInt("ch_use_" + activeProviderId + "_" + ch.lcn, 0);
             if (useCount > 0) {
-                holder.genre.setText("★ " + (ch.genre != null ? ch.genre : ""));
-                holder.genre.setTextColor(0xFF38BDF8); // Electric sky blue accent
+                holder.genre.setText((ch.genre != null ? ch.genre : ""));
+                holder.genre.setTextColor(0xFF38BDF8);
             } else {
                 holder.genre.setText(ch.genre != null ? ch.genre : "");
                 holder.genre.setTextColor(0x8CFFFFFF);
             }
 
-            holder.itemView.setOnClickListener(v -> listener.onItemClick(ch));
+            holder.itemView.setOnClickListener(v -> {
+                if (listener != null) listener.onChannelClick(ch);
+            });
         }
 
         @Override
         public int getItemCount() {
-            return items.size();
+            return list.size();
         }
 
         class ViewHolder extends RecyclerView.ViewHolder {
@@ -386,4 +526,3 @@ public class RemoteSidebarActivity extends Activity {
         }
     }
 }
-

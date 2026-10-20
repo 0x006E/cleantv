@@ -109,5 +109,25 @@ export const SensyIr = {
             return false;
         }
         return SensyIrModule.resetDevice();
+    },
+
+    /**
+     * Get saved TV IP address
+     */
+    async getSavedTvIp(): Promise<string> {
+        if (Platform.OS !== 'android' || !SensyIrModule?.getSavedTvIp) {
+            return '100.97.35.51';
+        }
+        return SensyIrModule.getSavedTvIp();
+    },
+
+    /**
+     * Save TV IP address to preferences
+     */
+    async saveTvIp(ip: string): Promise<boolean> {
+        if (Platform.OS !== 'android' || !SensyIrModule?.saveTvIp) {
+            return false;
+        }
+        return SensyIrModule.saveTvIp(ip);
     }
 };

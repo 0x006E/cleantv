@@ -115,10 +115,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private SensyIrManager irManager;
     private RemoteSidebarDialog sidebarDialog;
     private RailsAdapter railsAdapter;
-    private AppsRowAdapter favAppsAdapter;
-    private ChannelsAdapter channelsAdapter;
-    private InputsAdapter inputsAdapter;
-    private AppsRowAdapter allAppsAdapter;
+    private RailCardsAdapter favAppsAdapter;
+    private RailCardsAdapter channelsAdapter;
+    private RailCardsAdapter inputsAdapter;
+    private RailCardsAdapter allAppsAdapter;
     private Config cfg;
     private int activeProviderId = 43; // Default: Kerala Vision
     private String activeProviderTitle = "Kerala Vision Digital";
@@ -238,6 +238,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         sky = findViewById(R.id.sky);
         sky.setIntensity(cfg.skyIntensity);
         glass = findViewById(R.id.glass);
+        if (glass != null) glass.setVisibility(View.GONE);
         ambient = findViewById(R.id.ambient);
         // The glow is one bitmap, so its alpha can be applied while drawing it. Otherwise every frame of
         // a fade renders it into a full-screen offscreen buffer first.
@@ -263,102 +264,65 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         grid.setHasFixedSize(true);
         grid.setItemAnimator(null);
 
-        favAppsAdapter = new AppsRowAdapter(this, new AppsRowAdapter.Listener() {
+        favAppsAdapter = new RailCardsAdapter();
+        favAppsAdapter.setFocusListener((card, view) -> onCardFocused(view, card.accentColor));
+        favAppsAdapter.setNavigationListener(new RailCardsAdapter.NavigationListener() {
             @Override
-            public void onAppClick(AppsRowAdapter.AppItem item) {
-                onAppSelected(item);
-            }
-
-            @Override
-            public void onAppFocus(AppsRowAdapter.AppItem item, View view) {
-                onCardFocused(view, 0xFFE11D48);
-            }
-
-            @Override
-            public boolean onAppNavigateUp(int position) {
+            public boolean onNavigateUp(int position) {
                 if (btnWifi != null) btnWifi.requestFocus();
                 return true;
             }
 
             @Override
-            public boolean onAppNavigateDown(int position) {
+            public boolean onNavigateDown(int position) {
                 focusRail(RailsAdapter.RAIL_CHANNELS);
                 return true;
             }
         });
 
-        channelsAdapter = new ChannelsAdapter(this, new ChannelsAdapter.OnChannelListener() {
+        channelsAdapter = new RailCardsAdapter();
+        channelsAdapter.setFocusListener((card, view) -> onCardFocused(view, card.accentColor));
+        channelsAdapter.setNavigationListener(new RailCardsAdapter.NavigationListener() {
             @Override
-            public void onChannelClick(LcnDatabaseHelper.Channel channel) {
-                onChannelSelected(channel);
-            }
-
-            @Override
-            public void onChannelFocus(LcnDatabaseHelper.Channel channel, View view) {
-                onCardFocused(view, 0xFF0284C7);
-            }
-
-            @Override
-            public void onBrowseAllClick() {
-                openRemoteSidebar();
-            }
-
-            @Override
-            public boolean onChannelNavigateUp(int position) {
+            public boolean onNavigateUp(int position) {
                 focusRail(RailsAdapter.RAIL_APPS);
                 return true;
             }
 
             @Override
-            public boolean onChannelNavigateDown(int position) {
+            public boolean onNavigateDown(int position) {
                 focusRail(RailsAdapter.RAIL_INPUTS);
                 return true;
             }
         });
 
-        inputsAdapter = new InputsAdapter(new InputsAdapter.Listener() {
+        inputsAdapter = new RailCardsAdapter();
+        inputsAdapter.setFocusListener((card, view) -> onCardFocused(view, card.accentColor));
+        inputsAdapter.setNavigationListener(new RailCardsAdapter.NavigationListener() {
             @Override
-            public void onInputClick(InputsAdapter.InputItem item) {
-                onInputSelected(item);
-            }
-
-            @Override
-            public void onInputFocus(InputsAdapter.InputItem item, View view) {
-                onCardFocused(view, item.accentColor);
-            }
-
-            @Override
-            public boolean onInputNavigateUp(int position) {
+            public boolean onNavigateUp(int position) {
                 focusRail(RailsAdapter.RAIL_CHANNELS);
                 return true;
             }
 
             @Override
-            public boolean onInputNavigateDown(int position) {
+            public boolean onNavigateDown(int position) {
                 focusRail(RailsAdapter.RAIL_ALL_APPS);
                 return true;
             }
         });
 
-        allAppsAdapter = new AppsRowAdapter(this, new AppsRowAdapter.Listener() {
+        allAppsAdapter = new RailCardsAdapter();
+        allAppsAdapter.setFocusListener((card, view) -> onCardFocused(view, card.accentColor));
+        allAppsAdapter.setNavigationListener(new RailCardsAdapter.NavigationListener() {
             @Override
-            public void onAppClick(AppsRowAdapter.AppItem item) {
-                onAppSelected(item);
-            }
-
-            @Override
-            public void onAppFocus(AppsRowAdapter.AppItem item, View view) {
-                onCardFocused(view, 0xFF6366F1);
-            }
-
-            @Override
-            public boolean onAppNavigateUp(int position) {
+            public boolean onNavigateUp(int position) {
                 focusRail(RailsAdapter.RAIL_INPUTS);
                 return true;
             }
 
             @Override
-            public boolean onAppNavigateDown(int position) {
+            public boolean onNavigateDown(int position) {
                 return true;
             }
         });
@@ -372,10 +336,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         });
 
         List<RailsAdapter.RailConfig> configs = new ArrayList<>();
-        configs.add(new RailsAdapter.RailConfig(RailsAdapter.RAIL_APPS, "Apps", R.drawable.ic_apps, 0xFFE11D48, favAppsAdapter));
-        configs.add(new RailsAdapter.RailConfig(RailsAdapter.RAIL_CHANNELS, "Live TV", R.drawable.ic_livetv, 0xFF0284C7, channelsAdapter));
+        configs.add(new RailsAdapter.RailConfig(RailsAdapter.RAIL_APPS, "Favorite Apps", R.drawable.ic_apps, 0xFFE11D48, favAppsAdapter));
+        configs.add(new RailsAdapter.RailConfig(RailsAdapter.RAIL_CHANNELS, "Live Channels", R.drawable.ic_livetv, 0xFF0EA5E9, channelsAdapter));
         configs.add(new RailsAdapter.RailConfig(RailsAdapter.RAIL_INPUTS, "Inputs", R.drawable.ic_input, 0xFF10B981, inputsAdapter));
-        configs.add(new RailsAdapter.RailConfig(RailsAdapter.RAIL_ALL_APPS, "All Apps", R.drawable.ic_apps, 0xFF6366F1, allAppsAdapter));
+        configs.add(new RailsAdapter.RailConfig(RailsAdapter.RAIL_ALL_APPS, "All Apps", R.drawable.ic_apps, 0xFF8B5CF6, allAppsAdapter));
         railsAdapter.setRails(configs);
 
         grid.setAdapter(railsAdapter);
@@ -388,34 +352,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             @Override
             public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
                 if (!glassShown) return;
-                glassTargetY -= dy;
-                glassScrollShift -= dy;
                 glass.setTranslationY(glass.getTranslationY() - dy);
             }
         });
 
         // Liquid feel: soft springs on the highlight's position.
         springX = new SpringAnimation(glass, DynamicAnimation.TRANSLATION_X);
-        springY = new SpringAnimation(glass, new FloatPropertyCompat<View>("glassContentY") {
-            @Override
-            public float getValue(View v) {
-                return v.getTranslationY() - glassScrollShift;
-            }
-
-            @Override
-            public void setValue(View v, float value) {
-                v.setTranslationY(value + glassScrollShift);
-            }
-        });
+        springY = new SpringAnimation(glass, DynamicAnimation.TRANSLATION_Y);
         for (SpringAnimation s : new SpringAnimation[]{springX, springY}) {
             if (reducedMotion) {
-                // Stiff and almost critically damped: settles in a few frames instead of oscillating,
-                // and stops once the highlight is within 1.5 px of its tile.
                 s.setSpring(new SpringForce().setStiffness(1400f).setDampingRatio(0.95f));
                 s.setMinimumVisibleChange(1.5f);
             } else {
-                s.setSpring(new SpringForce().setStiffness(advancedEffects ? 320f : 260f)
-                        .setDampingRatio(advancedEffects ? 0.76f : 0.58f));
+                s.setSpring(new SpringForce().setStiffness(advancedEffects ? 380f : 300f)
+                        .setDampingRatio(advancedEffects ? 0.80f : 0.65f));
             }
         }
 
@@ -431,9 +381,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             open(systemIntent(Settings.ACTION_WIFI_SETTINGS));
             return true;
         });
-        btnSettings.setOnClickListener(v -> open(systemIntent(Settings.ACTION_SETTINGS)));
+        btnSettings.setOnClickListener(v -> showSettingsMenu());
         btnSettings.setOnLongClickListener(v -> {
-            showSettingsMenu();
+            open(systemIntent(Settings.ACTION_SETTINGS));
             return true;
         });
 
@@ -536,9 +486,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
-        grid.scrollToPosition(0);
+        if (grid != null) {
+            grid.scrollToPosition(0);
+        }
         lastFocused = 0;
-        lastFocusedKey = adapter.getItemCount() > 0 ? adapter.keyAt(0) : null;
+        lastFocusedKey = (adapter != null && adapter.getItemCount() > 0) ? adapter.keyAt(0) : null;
         rebuildOnResume = true;
     }
 
@@ -566,6 +518,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         updateInputsButton();
         sky.update();
         loadStbChannels();
+        if (getCurrentFocus() == null && grid != null) {
+            grid.post(() -> focusRail(RailsAdapter.RAIL_APPS));
+        }
         handler.postDelayed(minuteTick, MINUTE_MS);
     }
 
@@ -575,33 +530,49 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (requestCode == LAUNCHER_SETTINGS_REQUEST && resultCode == RESULT_OK) recreate();
     }
 
+    private final Handler keyHandler = new Handler(Looper.getMainLooper());
+    private boolean isOkLongPressed = false;
+    private final Runnable okLongPressRunnable = () -> {
+        isOkLongPressed = true;
+        openRemoteSidebar();
+    };
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
-        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+        int action = event.getAction();
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+            if (action == KeyEvent.ACTION_DOWN) {
                 if (event.isLongPress()) {
+                    keyHandler.removeCallbacks(okLongPressRunnable);
+                    isOkLongPressed = true;
                     openRemoteSidebar();
                     return true;
                 }
-                event.startTracking();
+                if (event.getRepeatCount() == 0) {
+                    isOkLongPressed = false;
+                    keyHandler.removeCallbacks(okLongPressRunnable);
+                    keyHandler.postDelayed(okLongPressRunnable, 350);
+                } else if (event.getRepeatCount() >= 1 && !isOkLongPressed) {
+                    isOkLongPressed = true;
+                    keyHandler.removeCallbacks(okLongPressRunnable);
+                    openRemoteSidebar();
+                    return true;
+                }
+            } else if (action == KeyEvent.ACTION_UP) {
+                keyHandler.removeCallbacks(okLongPressRunnable);
+                if (isOkLongPressed) {
+                    isOkLongPressed = false;
+                    return true; // Consume UP to suppress click on card/button
+                }
             }
         } else if (keyCode == KeyEvent.KEYCODE_MENU) {
-            if (event.getAction() == KeyEvent.ACTION_UP) {
+            if (action == KeyEvent.ACTION_UP) {
                 openRemoteSidebar();
                 return true;
             }
         }
         return super.dispatchKeyEvent(event);
-    }
-
-    @Override
-    public boolean onKeyLongPress(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
-            openRemoteSidebar();
-            return true;
-        }
-        return super.onKeyLongPress(keyCode, event);
     }
 
     private void loadStbChannels() {
@@ -639,12 +610,46 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 if (chList != null) {
                     currentChannels.addAll(chList);
                 }
-                if (channelsAdapter != null) {
-                    channelsAdapter.setProviderId(activeProviderId);
-                    channelsAdapter.setChannels(currentChannels);
-                }
+                updateChannelsRail();
             });
         }).start();
+    }
+
+    private int getChannelLogoRes(int channelId) {
+        if (channelId <= 0) return 0;
+        return getResources().getIdentifier("channel_" + channelId, "drawable", getPackageName());
+    }
+
+    private void updateChannelsRail() {
+        if (channelsAdapter == null) return;
+        List<RailCard> cards = new ArrayList<>();
+        for (LcnDatabaseHelper.Channel ch : currentChannels) {
+            int logoRes = getChannelLogoRes(ch.channelId);
+            String badge = String.valueOf(ch.lcn);
+            cards.add(new RailCard(
+                    "ch_" + ch.lcn,
+                    ch.name,
+                    badge,
+                    null,
+                    logoRes,
+                    RailCard.ArtworkStyle.LOGO_CENTER,
+                    0xFF0284C7,
+                    ch,
+                    new RailCard.ActionListener() {
+                        @Override
+                        public void onClick(RailCard card) {
+                            onChannelSelected((LcnDatabaseHelper.Channel) card.payload);
+                        }
+
+                        @Override
+                        public boolean onLongClick(RailCard card) {
+                            openRemoteSidebar();
+                            return true;
+                        }
+                    }
+            ));
+        }
+        channelsAdapter.setItems(cards);
     }
 
     private void onChannelSelected(LcnDatabaseHelper.Channel ch) {
@@ -654,10 +659,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         int current = sp.getInt(prefKey, 0);
         sp.edit().putInt(prefKey, current + 1).apply();
 
-        Toast.makeText(this, "Tuning " + ch.lcn + " " + ch.name + " (AV1)...", Toast.LENGTH_SHORT).show();
-        irManager.tuneChannelAsync(ch.lcn, keyCodes, activeRemoteBitLength, null);
-        openAvInput();
-        loadStbChannels();
+        Toast.makeText(this, "Tuning " + ch.lcn + " " + ch.name + "...", Toast.LENGTH_SHORT).show();
+        irManager.tuneChannelAsync(String.valueOf(ch.lcn), keyCodes, activeRemoteBitLength, null);
+
+        Intent intent = new Intent(this, TvPlayerActivity.class);
+        intent.putExtra(TvPlayerActivity.EXTRA_INITIAL_LCN, ch.lcn);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
+
+        handler.postDelayed(this::loadStbChannels, 1500);
     }
 
     private void onChannelCardFocused(LcnDatabaseHelper.Channel ch, View card) {
@@ -714,30 +724,19 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     private void tuneChannel(LcnDatabaseHelper.Channel channel) {
-        Toast.makeText(this, "Tuning " + channel.lcn + " " + channel.name + " (AV1)...", Toast.LENGTH_SHORT).show();
+        if (channel == null) return;
+        Toast.makeText(this, "Tuning " + channel.lcn + " " + channel.name + "...", Toast.LENGTH_SHORT).show();
         irManager.tuneChannelAsync(channel.lcn, keyCodes, activeRemoteBitLength, null);
-        openAvInput();
+        Intent intent = new Intent(this, TvPlayerActivity.class);
+        intent.putExtra(TvPlayerActivity.EXTRA_INITIAL_LCN, channel.lcn);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
     }
 
     private void openAvInput() {
-        TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
-        if (tim != null) {
-            for (TvInputInfo info : tim.getTvInputList()) {
-                CharSequence label = info.loadLabel(this);
-                String labelStr = label != null ? label.toString().toUpperCase(Locale.ROOT) : "";
-                if (labelStr.contains("AV") || info.getId().toLowerCase(Locale.ROOT).contains("composite") || info.getId().endsWith("/HW3")) {
-                    openInput(info.getId());
-                    return;
-                }
-            }
-        }
-        try {
-            Uri uri = TvContract.buildChannelUriForPassthroughInput("com.xiaomi.mitv.tvinput/.TvInputService/HW3");
-            startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "vnd.android.cursor.item/channel")
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        } catch (Exception e) {
-            android.util.Log.w("TvHome", "Fallback to default openInput", e);
-        }
+        Intent intent = new Intent(this, TvPlayerActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
     }
 
     public void openRemoteSidebar() {
@@ -788,6 +787,44 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         loadStbChannels();
     }
 
+    private RailCard createAppCard(AppsRowAdapter.AppItem item) {
+        RailCard.ArtworkStyle style = (item.banner != null)
+                ? RailCard.ArtworkStyle.BANNER_FILL
+                : RailCard.ArtworkStyle.APP_ICON;
+        Drawable art = (item.banner != null) ? item.banner : item.icon;
+
+        return new RailCard(
+                item.pkg,
+                item.label,
+                null,
+                art,
+                0,
+                style,
+                item.accentColor,
+                item,
+                new RailCard.ActionListener() {
+                    @Override
+                    public void onClick(RailCard card) {
+                        onAppSelected((AppsRowAdapter.AppItem) card.payload);
+                    }
+
+                    @Override
+                    public boolean onLongClick(RailCard card) {
+                        AppsRowAdapter.AppItem ai = (AppsRowAdapter.AppItem) card.payload;
+                        if (ai != null && !ai.pkg.isEmpty()) {
+                            Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + ai.pkg));
+                            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            try {
+                                startActivity(i);
+                            } catch (ActivityNotFoundException ignored) {}
+                            return true;
+                        }
+                        return false;
+                    }
+                }
+        );
+    }
+
     private void reloadApps() {
         PackageManager pm = getPackageManager();
         Intent probe = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);
@@ -816,8 +853,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         Collections.sort(favs, (a, b) -> Integer.compare(dock.indexOf(a.pkg), dock.indexOf(b.pkg)));
         Collections.sort(others, (a, b) -> a.label.compareToIgnoreCase(b.label));
-        if (favAppsAdapter != null) favAppsAdapter.setItems(favs);
-        if (allAppsAdapter != null) allAppsAdapter.setItems(others);
+
+        List<RailCard> favCards = new ArrayList<>();
+        for (AppsRowAdapter.AppItem it : favs) {
+            favCards.add(createAppCard(it));
+        }
+        List<RailCard> otherCards = new ArrayList<>();
+        for (AppsRowAdapter.AppItem it : others) {
+            otherCards.add(createAppCard(it));
+        }
+        if (favAppsAdapter != null) favAppsAdapter.setItems(favCards);
+        if (allAppsAdapter != null) allAppsAdapter.setItems(otherCards);
     }
 
     private void reloadInputs() {
@@ -850,7 +896,32 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             list.add(new InputsAdapter.InputItem("hdmi1", "HDMI 1", "HDMI", R.drawable.ic_input, 0xFF10B981));
             list.add(new InputsAdapter.InputItem("hdmi2", "HDMI 2", "HDMI", R.drawable.ic_input, 0xFF10B981));
         }
-        if (inputsAdapter != null) inputsAdapter.setItems(list);
+
+        List<RailCard> inputCards = new ArrayList<>();
+        for (InputsAdapter.InputItem it : list) {
+            inputCards.add(new RailCard(
+                    it.id,
+                    it.title,
+                    it.badge,
+                    null,
+                    it.iconRes,
+                    RailCard.ArtworkStyle.ICON_CENTER,
+                    it.accentColor,
+                    it,
+                    new RailCard.ActionListener() {
+                        @Override
+                        public void onClick(RailCard card) {
+                            onInputSelected((InputsAdapter.InputItem) card.payload);
+                        }
+
+                        @Override
+                        public boolean onLongClick(RailCard card) {
+                            return false;
+                        }
+                    }
+            ));
+        }
+        if (inputsAdapter != null) inputsAdapter.setItems(inputCards);
     }
 
     private void onAppSelected(AppsRowAdapter.AppItem item) {
@@ -893,32 +964,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private void onCardFocused(View card, int accentColor) {
         hideHero();
-        Rect r = new Rect(0, 0, card.getWidth(), card.getHeight());
-        root.offsetDescendantRectToMyCoords(card, r);
-        float pad = 6f * density;
-        float scale = 1.08f;
-        float w = card.getWidth() * scale + 2 * pad;
-        float h = card.getHeight() * scale + 2 * pad;
-        float x = r.exactCenterX() - w / 2f;
-        float y = r.exactCenterY() - h / 2f;
-
-        ViewGroup.LayoutParams lp = glass.getLayoutParams();
-        if (lp.width != (int) w || lp.height != (int) h) {
-            lp.width = (int) w;
-            lp.height = (int) h;
-            glass.setLayoutParams(lp);
-            glass.setRadius(16f * density);
-        }
-        glassTargetX = x;
-        glassTargetY = y;
-        springX.animateToFinalPosition(x);
-        springY.animateToFinalPosition(y);
-        if (!glassShown) {
-            glass.setAlpha(0f);
-            glass.animate().alpha(1f).setDuration(160).start();
-            glassShown = true;
-        }
-
         if (advancedEffects) {
             transitionAmbient(accentColor);
         } else {
@@ -1018,7 +1063,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             glass.setTranslationY(y);
         } else {
             springX.animateToFinalPosition(x);
-            springY.animateToFinalPosition(y - glassScrollShift);
+            springY.animateToFinalPosition(y);
         }
         View item = (View) card.getParent();
         if (position < COLUMNS) {
@@ -1403,19 +1448,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      *  which the Live TV app handles; where nothing takes that, the configured `input_action` is sent
      *  with the same URI instead (XGIMI's HDMI player only answers com.xgimi.action.hdmiPlayer). */
     private void openInput(String inputId) {
-        Uri uri = TvContract.buildChannelUriForPassthroughInput(inputId);
-        Intent view = new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "vnd.android.cursor.item/channel")
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        try {
-            startActivity(view);
-            return;
-        } catch (ActivityNotFoundException e) {
-            if (inputAction.isEmpty()) {
-                Toast.makeText(this, R.string.not_available, Toast.LENGTH_SHORT).show();
-                return;
-            }
-        }
-        open(new Intent(inputAction).setDataAndType(uri, "vnd.android.cursor.item/channel"));
+        Intent intent = new Intent(this, TvPlayerActivity.class);
+        intent.putExtra(TvPlayerActivity.EXTRA_INPUT_ID, inputId);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
     }
 
     /** Dropdown menu under the Inputs pill: HDMI ports (with connection state), AV and Live TV. */
@@ -1567,17 +1603,28 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         View anchor = findViewById(R.id.btnSettings);
         View panel = getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
         LinearLayout rows = panel.findViewById(R.id.rows);
-        PopupWindow popup = glassPopup(panel, (int) (200 * density));
-        addSettingsMenuRow(rows, popup, R.string.launcher_settings, () -> startActivityForResult(
+        PopupWindow popup = glassPopup(panel, (int) (240 * density));
+
+        addSettingsMenuRow(rows, popup, "STB & Remote Pairing", () -> {
+            Intent intent = new Intent(this, StbSetupActivity.class);
+            intent.putExtra(StbSetupActivity.EXTRA_START_PAIRING, false);
+            startActivityForResult(intent, LAUNCHER_SETTINGS_REQUEST);
+        });
+
+        addSettingsMenuRow(rows, popup, "TV Home Settings", () -> startActivityForResult(
                 new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
-        if (moduleCards) addSettingsMenuRow(rows, popup, R.string.module_cards, this::showModuleCards);
+
+        addSettingsMenuRow(rows, popup, "Android TV Settings", () -> open(systemIntent(Settings.ACTION_SETTINGS)));
+
+        if (moduleCards) addSettingsMenuRow(rows, popup, getString(R.string.module_cards), this::showModuleCards);
+
         panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
-        popup.setWidth(Math.max((int) (200 * density), panel.getMeasuredWidth()));
+        popup.setWidth(Math.max((int) (240 * density), panel.getMeasuredWidth()));
         dropIn(popup, panel, anchor, Gravity.END);
         rows.getChildAt(0).requestFocus();
     }
 
-    private void addSettingsMenuRow(LinearLayout rows, PopupWindow popup, int title, Runnable action) {
+    private void addSettingsMenuRow(LinearLayout rows, PopupWindow popup, CharSequence title, Runnable action) {
         View row = getLayoutInflater().inflate(R.layout.item_input, rows, false);
         row.findViewById(R.id.icon).setVisibility(View.GONE);
         row.findViewById(R.id.dot).setVisibility(View.GONE);

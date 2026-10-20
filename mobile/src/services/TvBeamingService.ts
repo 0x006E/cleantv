@@ -55,7 +55,7 @@ export const KNOWN_KERALA_CANDIDATE_KEYS: Record<string, CandidateKey[]> = {
 };
 
 export const TvBeamingService = {
-    DEFAULT_TV_IP: '192.168.1.50',
+    DEFAULT_TV_IP: '100.97.35.51',
     DEFAULT_PORT: 8090,
 
     /**
@@ -76,12 +76,12 @@ export const TvBeamingService = {
     },
 
     /**
-     * Check if the Mi TV launcher is online on the local Wi-Fi
+     * Check if the Mi TV launcher is online on the local Wi-Fi / Tailscale
      */
     async checkStatus(tvIp: string): Promise<TvStatus> {
         const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/status`;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 2000);
+        const timeout = setTimeout(() => controller.abort(), 8000);
 
         try {
             const res = await fetch(url, { signal: controller.signal });
@@ -99,14 +99,23 @@ export const TvBeamingService = {
      */
     async blast(tvIp: string, hexCode: string, bitLength: number = 32): Promise<boolean> {
         const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/blast`;
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ hex: hexCode, bits: bitLength }),
-        });
-        if (!res.ok) throw new Error(`Blast failed: HTTP ${res.status}`);
-        const data = await res.json();
-        return !!data.success;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hex: hexCode, bits: bitLength }),
+                signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            if (!res.ok) throw new Error(`Blast failed: HTTP ${res.status}`);
+            const data = await res.json();
+            return !!data.success;
+        } catch (err: any) {
+            clearTimeout(timeout);
+            throw err;
+        }
     },
 
     /**
@@ -114,14 +123,23 @@ export const TvBeamingService = {
      */
     async saveCustomRemote(tvIp: string, config: CustomRemoteConfig): Promise<boolean> {
         const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/custom-remote`;
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(config),
-        });
-        if (!res.ok) throw new Error(`Save failed: HTTP ${res.status}`);
-        const data = await res.json();
-        return !!data.success;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config),
+                signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            if (!res.ok) throw new Error(`Save failed: HTTP ${res.status}`);
+            const data = await res.json();
+            return !!data.success;
+        } catch (err: any) {
+            clearTimeout(timeout);
+            throw err;
+        }
     },
 
     /**
@@ -129,11 +147,19 @@ export const TvBeamingService = {
      */
     async getCustomRemote(tvIp: string): Promise<CustomRemoteConfig | null> {
         const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/custom-remote`;
-        const res = await fetch(url);
-        if (!res.ok) return null;
-        const data = await res.json();
-        if (data && data.keys) return data as CustomRemoteConfig;
-        return null;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+            const res = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeout);
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (data && data.keys) return data as CustomRemoteConfig;
+            return null;
+        } catch {
+            clearTimeout(timeout);
+            return null;
+        }
     },
 
     /**
@@ -141,14 +167,23 @@ export const TvBeamingService = {
      */
     async tuneChannel(tvIp: string, lcn: string): Promise<boolean> {
         const url = `http://${tvIp.trim()}:${this.DEFAULT_PORT}/api/tune`;
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lcn }),
-        });
-        if (!res.ok) throw new Error(`Tune failed: HTTP ${res.status}`);
-        const data = await res.json();
-        return !!data.success;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lcn }),
+                signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            if (!res.ok) throw new Error(`Tune failed: HTTP ${res.status}`);
+            const data = await res.json();
+            return !!data.success;
+        } catch (err: any) {
+            clearTimeout(timeout);
+            throw err;
+        }
     },
 };
 

@@ -311,13 +311,38 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
                 """.trimIndent(), arrayOf(remoteId.toString()))
 
                 val map = Arguments.createMap()
+                val rawMap = mutableMapOf<String, String>()
                 while (cursor.moveToNext()) {
                     val keyId = cursor.getInt(0)
                     val code = cursor.getString(1)
                     val keyName = KEY_NAMES[keyId] ?: "KEY_$keyId"
-                    map.putString(keyName, code)
+                    rawMap[keyName] = code
+                    if (keyName.contains(" ")) {
+                        rawMap[keyName.replace(" ", "_")] = code
+                    }
                 }
                 cursor.close()
+
+                // Sanity fix for corrupted database entries where CH UP was assigned DOWN code (e.g. Remote 184):
+                val upCode = rawMap["UP"]
+                val downCode = rawMap["DOWN"]
+                val chUpCode = rawMap["CH UP"]
+                val chDownCode = rawMap["CH DOWN"]
+
+                if (upCode != null && (chUpCode == null || (downCode != null && chUpCode.equals(downCode, ignoreCase = true)))) {
+                    rawMap["CH UP"] = upCode
+                    rawMap["CH_UP"] = upCode
+                    rawMap["CHANNEL_UP"] = upCode
+                }
+                if (downCode != null && (chDownCode == null || chDownCode.isEmpty())) {
+                    rawMap["CH DOWN"] = downCode
+                    rawMap["CH_DOWN"] = downCode
+                    rawMap["CHANNEL_DOWN"] = downCode
+                }
+
+                for ((k, v) in rawMap) {
+                    map.putString(k, v)
+                }
                 promise.resolve(map)
             } catch (e: Exception) {
                 promise.reject("DB_ERROR", e.message, e)
@@ -405,17 +430,18 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
         }
 
         val list = mutableListOf<Int>()
-        list.add(9000)
-        list.add(4500)
+        // Sensy hardware carrier cycle counts (at 38kHz):
+        // Header: 342 cycles mark (~9000µs), 171 cycles space (~4500µs)
+        list.add(342)
+        list.add(171)
 
         for (bit in bitLength - 1 downTo 0) {
-            list.add(560)
+            list.add(21) // Mark: 21 cycles (~553µs)
             val isSet = (numericVal and (1L shl bit)) != 0L
-            list.add(if (isSet) 1690 else 560)
+            list.add(if (isSet) 60 else 21) // Space: 60 cycles (~1579µs) for '1', 21 cycles (~553µs) for '0'
         }
 
-        list.add(560)
-        list.add(40000)
+        list.add(21) // Stop bit mark: 21 cycles
 
         return list.toIntArray()
     }
@@ -431,6 +457,19 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
                 promise.reject("TRANSMIT_FAILED", e.message, e)
             }
         }.start()
+    }
+
+    @ReactMethod
+    fun getSavedTvIp(promise: Promise) {
+        val sp = reactContext.getSharedPreferences("tv_beaming", Context.MODE_PRIVATE)
+        promise.resolve(sp.getString("tv_ip", "100.97.35.51"))
+    }
+
+    @ReactMethod
+    fun saveTvIp(ip: String, promise: Promise) {
+        val sp = reactContext.getSharedPreferences("tv_beaming", Context.MODE_PRIVATE)
+        sp.edit().putString("tv_ip", ip).apply()
+        promise.resolve(true)
     }
 
     @ReactMethod

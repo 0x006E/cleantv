@@ -49,6 +49,7 @@
             android:textSize="13sp"
             android:fontFamily="@font/outfit"
             android:visibility="gone" />
+
     </FrameLayout>
 
     <TextView

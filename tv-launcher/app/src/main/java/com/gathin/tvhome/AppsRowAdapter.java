@@ -106,14 +106,9 @@ public class AppsRowAdapter extends RecyclerView.Adapter<AppsRowAdapter.ViewHold
         });
 
         holder.card.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus) {
-                v.animate().scaleX(1.08f).scaleY(1.08f).translationZ(8f).setDuration(160).start();
-                holder.name.setVisibility(View.VISIBLE);
-                holder.name.animate().alpha(1f).translationY(0f).setDuration(160).start();
-                if (listener != null) listener.onAppFocus(item, v);
-            } else {
-                v.animate().scaleX(1.0f).scaleY(1.0f).translationZ(0f).setDuration(120).start();
-                holder.name.animate().alpha(0f).translationY(-6f).setDuration(100).withEndAction(() -> holder.name.setVisibility(View.INVISIBLE)).start();
+            TvDesignTokens.animateFocus(v, holder.name, hasFocus);
+            if (hasFocus && listener != null) {
+                listener.onAppFocus(item, v);
             }
         });
 

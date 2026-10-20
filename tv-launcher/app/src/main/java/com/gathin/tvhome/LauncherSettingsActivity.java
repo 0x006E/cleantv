@@ -90,9 +90,13 @@ public final class LauncherSettingsActivity extends Activity {
         TextView testIrChoice = findViewById(R.id.testIrChoice);
 
         updateStbProviderText(stbProviderChoice, stbPrefs);
-        stbProviderChoice.setOnClickListener(v -> showProviderPicker(stbProviderChoice, stbPrefs));
+        stbProviderChoice.setOnClickListener(v -> startActivity(new Intent(this, StbSetupActivity.class)));
 
-        pairRemoteChoice.setOnClickListener(v -> startPairingWizard(stbPrefs, stbProviderChoice));
+        pairRemoteChoice.setOnClickListener(v -> {
+            Intent intent = new Intent(this, StbSetupActivity.class);
+            intent.putExtra(StbSetupActivity.EXTRA_START_PAIRING, true);
+            startActivity(intent);
+        });
 
         testIrChoice.setOnClickListener(v -> {
             int rId = stbPrefs.getInt("remote_id", 43);
@@ -114,6 +118,10 @@ public final class LauncherSettingsActivity extends Activity {
 
         refresh();
         columnChoices[Math.max(0, Math.min(columns - 4, 3))].requestFocus();
+
+        if (getIntent().getBooleanExtra("extra_start_pairing", false)) {
+            startPairingWizard(stbPrefs, stbProviderChoice);
+        }
     }
 
     private void showProviderPicker(TextView view, SharedPreferences stbPrefs) {

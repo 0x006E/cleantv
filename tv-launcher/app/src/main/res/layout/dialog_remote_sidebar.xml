@@ -2,11 +2,16 @@
 <!-- Translucent sidebar dialog for AV1 STB channels and remote control operations.
      Styled 100% following cleanyourtv's Apple TV / glass_panel convention. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/sidebar_backdrop"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:focusable="false"
+    android:focusableInTouchMode="false"
+    android:descendantFocusability="afterDescendants"
     android:background="#4D000000">
 
     <LinearLayout
+        android:id="@+id/sidebar_panel"
         android:layout_width="380dp"
         android:layout_height="match_parent"
         android:layout_gravity="end"
@@ -14,6 +19,10 @@
         android:orientation="vertical"
         android:background="@drawable/glass_panel"
         android:padding="20dp"
+        android:clickable="true"
+        android:focusable="false"
+        android:focusableInTouchMode="false"
+        android:descendantFocusability="afterDescendants"
         android:elevation="16dp">
 
         <!-- Header -->
@@ -59,10 +68,12 @@
                 android:paddingEnd="0dp"
                 android:gravity="center"
                 android:text="✕"
-                android:textSize="14sp" />
+                android:textSize="14sp"
+                android:nextFocusLeft="@+id/tab_pairing"
+                android:nextFocusDown="@+id/tab_pairing" />
         </LinearLayout>
 
-        <!-- Segmented Tab Switcher: Channels vs Remote -->
+        <!-- Segmented Tab Switcher: Channels vs Remote vs Pairing -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -74,24 +85,44 @@
                 android:id="@+id/tab_channels"
                 style="@style/TopButtonBase"
                 android:layout_width="0dp"
-                android:layout_height="38dp"
+                android:layout_height="36dp"
                 android:layout_weight="1"
                 android:layout_marginStart="0dp"
-                android:layout_marginEnd="6dp"
+                android:layout_marginEnd="4dp"
                 android:gravity="center"
-                android:text="📺 Channels"
-                android:textSize="14sp" />
+                android:text="Channels"
+                android:textSize="13sp"
+                android:nextFocusRight="@+id/tab_remote"
+                android:nextFocusDown="@+id/sidebar_channels_list" />
 
             <TextView
                 android:id="@+id/tab_remote"
                 style="@style/TopButtonBase"
                 android:layout_width="0dp"
-                android:layout_height="38dp"
+                android:layout_height="36dp"
                 android:layout_weight="1"
-                android:layout_marginStart="6dp"
+                android:layout_marginStart="0dp"
+                android:layout_marginEnd="4dp"
                 android:gravity="center"
-                android:text="📱 Remote"
-                android:textSize="14sp" />
+                android:text="Remote"
+                android:textSize="13sp"
+                android:nextFocusLeft="@+id/tab_channels"
+                android:nextFocusRight="@+id/tab_pairing"
+                android:nextFocusDown="@+id/btn_power" />
+
+            <TextView
+                android:id="@+id/tab_pairing"
+                style="@style/TopButtonBase"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:layout_marginStart="0dp"
+                android:gravity="center"
+                android:text="Pairing"
+                android:textSize="13sp"
+                android:nextFocusLeft="@+id/tab_remote"
+                android:nextFocusRight="@+id/btn_close_remote"
+                android:nextFocusDown="@+id/btn_sidebar_test_chup" />
         </LinearLayout>
 
         <!-- Container 1: Channels List -->
@@ -144,7 +175,7 @@
                         android:layout_marginStart="0dp"
                         android:layout_marginEnd="6dp"
                         android:gravity="center"
-                        android:text="⏻ Power"
+                        android:text="Power"
                         android:textColor="#EF4444"
                         android:textSize="14sp" />
 
@@ -156,7 +187,7 @@
                         android:layout_weight="1"
                         android:layout_marginStart="6dp"
                         android:gravity="center"
-                        android:text="🔇 Mute"
+                        android:text="Mute"
                         android:textSize="14sp" />
                 </LinearLayout>
 
@@ -365,16 +396,221 @@
             </LinearLayout>
         </ScrollView>
 
+        <!-- Container 3: Live TV Interactive Remote Pairing -->
+        <ScrollView
+            android:id="@+id/pairing_container"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:visibility="gone"
+            android:scrollbars="none"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingTop="8dp">
+
+                <TextView
+                    android:id="@+id/sidebar_pairing_provider"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Kerala Vision Digital Network"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="16sp"
+                    android:fontFamily="@font/outfit_medium" />
+
+                <TextView
+                    android:id="@+id/sidebar_pairing_model"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Candidate Model 1 of 7 (Remote #43)"
+                    android:textColor="#38BDF8"
+                    android:textSize="13sp"
+                    android:fontFamily="@font/outfit" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Watch your Live TV on the left while testing. Does the channel or volume change?"
+                    android:textColor="#A1A1AA"
+                    android:textSize="12sp"
+                    android:fontFamily="@font/outfit" />
+
+                <TextView
+                    android:id="@+id/sidebar_pairing_feedback"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="Ready to test candidate remote"
+                    android:textColor="#10B981"
+                    android:textSize="12sp"
+                    android:fontFamily="@font/outfit_medium" />
+
+                <!-- Test action buttons -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/btn_sidebar_test_chup"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="0dp"
+                        android:gravity="center"
+                        android:text="Test CH +"
+                        android:textSize="12sp"
+                        android:nextFocusUp="@+id/tab_pairing"
+                        android:nextFocusRight="@+id/btn_sidebar_test_chdown"
+                        android:nextFocusDown="@+id/btn_sidebar_test_power" />
+
+                    <TextView
+                        android:id="@+id/btn_sidebar_test_chdown"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="6dp"
+                        android:gravity="center"
+                        android:text="Test CH −"
+                        android:textSize="12sp"
+                        android:nextFocusUp="@+id/tab_pairing"
+                        android:nextFocusLeft="@+id/btn_sidebar_test_chup"
+                        android:nextFocusDown="@+id/btn_sidebar_test_volup" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/btn_sidebar_test_power"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="0dp"
+                        android:gravity="center"
+                        android:text="Test Power"
+                        android:textColor="#EF4444"
+                        android:textSize="12sp"
+                        android:nextFocusUp="@+id/btn_sidebar_test_chup"
+                        android:nextFocusRight="@+id/btn_sidebar_test_volup"
+                        android:nextFocusDown="@+id/btn_sidebar_prev_model" />
+
+                    <TextView
+                        android:id="@+id/btn_sidebar_test_volup"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="6dp"
+                        android:gravity="center"
+                        android:text="Test Vol+"
+                        android:textSize="12sp"
+                        android:nextFocusUp="@+id/btn_sidebar_test_chdown"
+                        android:nextFocusLeft="@+id/btn_sidebar_test_power"
+                        android:nextFocusDown="@+id/btn_sidebar_next_model" />
+                </LinearLayout>
+
+                <!-- Model selection navigation row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/btn_sidebar_prev_model"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="0dp"
+                        android:gravity="center"
+                        android:text="◀ Prev Model"
+                        android:textSize="12sp"
+                        android:nextFocusUp="@+id/btn_sidebar_test_power"
+                        android:nextFocusRight="@+id/btn_sidebar_next_model"
+                        android:nextFocusDown="@+id/btn_sidebar_pair_confirm" />
+
+                    <TextView
+                        android:id="@+id/btn_sidebar_next_model"
+                        style="@style/TopButtonBase"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="6dp"
+                        android:gravity="center"
+                        android:text="Next Model ▶"
+                        android:textColor="#38BDF8"
+                        android:textSize="12sp"
+                        android:nextFocusUp="@+id/btn_sidebar_test_volup"
+                        android:nextFocusLeft="@+id/btn_sidebar_prev_model"
+                        android:nextFocusDown="@+id/btn_sidebar_pair_confirm" />
+                </LinearLayout>
+
+                <!-- Confirm pairing button -->
+                <TextView
+                    android:id="@+id/btn_sidebar_pair_confirm"
+                    style="@style/TopButtonBase"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:layout_marginTop="16dp"
+                    android:gravity="center"
+                    android:text="Pair This Remote"
+                    android:textColor="#10B981"
+                    android:textStyle="bold"
+                    android:textSize="13sp"
+                    android:nextFocusUp="@+id/btn_sidebar_prev_model"
+                    android:nextFocusDown="@+id/btn_sidebar_change_provider" />
+
+                <!-- Change Provider button -->
+                <TextView
+                    android:id="@+id/btn_sidebar_change_provider"
+                    style="@style/TopButtonBase"
+                    android:layout_width="match_parent"
+                    android:layout_height="36dp"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:text="Change Provider Search"
+                    android:textColor="#A1A1AA"
+                    android:textSize="12sp"
+                    android:nextFocusUp="@+id/btn_sidebar_pair_confirm" />
+            </LinearLayout>
+        </ScrollView>
+
         <!-- Status line -->
         <TextView
             android:id="@+id/remote_status_text"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="6dp"
             android:gravity="center"
             android:textColor="#80FFFFFF"
             android:textSize="12sp"
             android:fontFamily="@font/outfit"
             android:singleLine="true" />
+
+        <TextView
+            android:id="@+id/btn_pair_remote_sidebar"
+            style="@style/TopButtonBase"
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="Pair Remote / Change Provider"
+            android:textColor="#F2FFFFFF"
+            android:textSize="13sp"
+            android:fontFamily="@font/outfit_medium" />
     </LinearLayout>
 </FrameLayout>
