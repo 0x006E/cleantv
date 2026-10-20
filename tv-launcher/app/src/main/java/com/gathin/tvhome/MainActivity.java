@@ -120,7 +120,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private RailCardsAdapter inputsAdapter;
     private RailCardsAdapter allAppsAdapter;
     private Config cfg;
-    private int activeProviderId = 43; // Default: Kerala Vision
+    private int activeProviderId = 648; // Default: Kerala Vision Digital Network Kochi
     private String activeProviderTitle = "Kerala Vision Digital";
     private int activeRemoteId = 43;
     private int activeRemoteBitLength = 32;
@@ -539,8 +539,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             return;
         }
         android.content.SharedPreferences sp = getSharedPreferences("stb_settings", MODE_PRIVATE);
-        activeProviderId = sp.getInt("provider_id", 43);
-        activeProviderTitle = sp.getString("provider_title", "Kerala Vision Digital");
+        activeProviderId = sp.getInt("provider_id", 648);
+        activeProviderTitle = sp.getString("provider_title", "Kerala Vision Digital Network");
         activeRemoteId = sp.getInt("remote_id", 43);
         activeRemoteBitLength = sp.getInt("bit_length", 32);
 
@@ -605,9 +605,22 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         public boolean onLongClick(RailCard card) {
                             LcnDatabaseHelper.Channel chItem = (LcnDatabaseHelper.Channel) card.payload;
                             if (chItem != null) {
-                                boolean isFav = dbHelper.toggleFavorite(activeProviderId, chItem);
-                                Toast.makeText(MainActivity.this, (isFav ? "★ Added to Favourites: " : "Removed Favourite: ") + chItem.name, Toast.LENGTH_SHORT).show();
-                                loadStbChannels();
+                                String favOption = chItem.isFavorite ? "Remove from Favourites" : "Mark as Favourite";
+                                String[] options = new String[]{favOption, "Edit Channel Number (LCN)", "Tune Now"};
+                                new android.app.AlertDialog.Builder(MainActivity.this)
+                                        .setTitle(chItem.name + " (LCN " + chItem.getDisplayLcn() + ")")
+                                        .setItems(options, (dialog, which) -> {
+                                            if (which == 0) {
+                                                boolean isFav = dbHelper.toggleFavorite(activeProviderId, chItem);
+                                                Toast.makeText(MainActivity.this, (isFav ? "★ Added to Favourites: " : "Removed Favourite: ") + chItem.name, Toast.LENGTH_SHORT).show();
+                                                loadStbChannels();
+                                            } else if (which == 1) {
+                                                showEditLcnDialog(chItem);
+                                            } else if (which == 2) {
+                                                onChannelSelected(chItem);
+                                            }
+                                        })
+                                        .show();
                                 return true;
                             }
                             return false;
@@ -690,12 +703,46 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
     }
 
+    private void showEditLcnDialog(LcnDatabaseHelper.Channel ch) {
+        if (ch == null) return;
+        android.widget.EditText input = new android.widget.EditText(this);
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        input.setText(ch.getDisplayLcn());
+        input.setSelection(input.getText().length());
+        input.setTextColor(0xFFFFFFFF);
+        input.setBackgroundColor(0xFF151D2A);
+        input.setPadding(32, 24, 32, 24);
+
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Edit LCN for " + ch.name)
+                .setMessage("Original default: " + ch.lcn)
+                .setView(input)
+                .setPositiveButton("Save", (dialog, which) -> {
+                    String newLcn = input.getText().toString().trim();
+                    if (!newLcn.isEmpty()) {
+                        dbHelper.setCustomLcn(activeProviderId, ch.channelId, newLcn);
+                        ch.customLcn = newLcn;
+                        Toast.makeText(this, "Updated LCN to " + newLcn, Toast.LENGTH_SHORT).show();
+                        loadStbChannels();
+                    }
+                })
+                .setNeutralButton("Reset Default", (dialog, which) -> {
+                    dbHelper.setCustomLcn(activeProviderId, ch.channelId, "");
+                    ch.customLcn = null;
+                    Toast.makeText(this, "Reset to default LCN " + ch.lcn, Toast.LENGTH_SHORT).show();
+                    loadStbChannels();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
     private void tuneChannel(LcnDatabaseHelper.Channel channel) {
         if (channel == null) return;
-        Toast.makeText(this, "Tuning " + channel.lcn + " " + channel.name + "...", Toast.LENGTH_SHORT).show();
-        irManager.tuneChannelAsync(channel.lcn, keyCodes, activeRemoteBitLength, null);
+        String effectiveLcn = channel.getDisplayLcn();
+        Toast.makeText(this, "Tuning " + effectiveLcn + " " + channel.name + "...", Toast.LENGTH_SHORT).show();
+        irManager.tuneChannelAsync(effectiveLcn, keyCodes, activeRemoteBitLength, null);
         Intent intent = new Intent(this, TvPlayerActivity.class);
-        intent.putExtra(TvPlayerActivity.EXTRA_INITIAL_LCN, channel.lcn);
+        intent.putExtra(TvPlayerActivity.EXTRA_INITIAL_LCN, effectiveLcn);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(intent);
     }

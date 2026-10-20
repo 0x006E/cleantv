@@ -215,7 +215,7 @@ public final class LauncherSettingsActivity extends Activity {
     }
 
     private void startPairingWizard(SharedPreferences stbPrefs, TextView providerView) {
-        int providerId = stbPrefs.getInt("provider_id", 43);
+        int providerId = stbPrefs.getInt("provider_id", 648);
         LcnDatabaseHelper db = LcnDatabaseHelper.getInstance(this);
         new Thread(() -> {
             java.util.List<LcnDatabaseHelper.RemoteModel> remotes = db.getRemotesForProvider(providerId);

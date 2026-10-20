@@ -98,12 +98,17 @@ public class TvPlayerActivity extends Activity {
         setupTvView();
         tuneInput(currentInputId);
 
-        int initialLcn = getIntent().getIntExtra(EXTRA_INITIAL_LCN, -1);
-        if (initialLcn > 0) {
-            handler.postDelayed(() -> tuneStbChannel(initialLcn), 400);
+        String initialLcn = getIntent().getStringExtra(EXTRA_INITIAL_LCN);
+        if (initialLcn == null && getIntent().hasExtra(EXTRA_INITIAL_LCN)) {
+            int l = getIntent().getIntExtra(EXTRA_INITIAL_LCN, -1);
+            if (l > 0) initialLcn = String.valueOf(l);
         }
 
-        showOsd("Live TV", "Press OK or MENU for Remote Sidebar", 3500);
+        if (initialLcn != null && !initialLcn.isEmpty()) {
+            showOsd("Tuned " + initialLcn, "Press OK or MENU for Remote Sidebar", 3500);
+        } else {
+            showOsd("Live TV", "Press OK or MENU for Remote Sidebar", 3500);
+        }
     }
 
     private void setupTvView() {
@@ -162,7 +167,7 @@ public class TvPlayerActivity extends Activity {
     private void loadIrSettings() {
         new Thread(() -> {
             SharedPreferences sp = getSharedPreferences("stb_settings", Context.MODE_PRIVATE);
-            activeProviderId = sp.getInt("provider_id", 43);
+            activeProviderId = sp.getInt("provider_id", 648);
             int remoteId = sp.getInt("remote_id", 43);
             activeRemoteBitLength = sp.getInt("bit_length", 32);
 

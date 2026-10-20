@@ -441,28 +441,65 @@ public class LcnDatabaseHelper {
         return map;
     }
 
+    public static int getEffectiveProviderId(int providerId) {
+        if (providerId <= 0 || providerId == 43) {
+            return 648; // Kerala Vision Digital Network Kochi
+        }
+        return providerId;
+    }
+
     private android.content.SharedPreferences getUserPrefs() {
         return context.getSharedPreferences("user_channel_overrides", Context.MODE_PRIVATE);
     }
 
     public boolean isFavorite(int providerId, int channelId, String lcn) {
         android.content.SharedPreferences sp = getUserPrefs();
-        if (channelId > 0 && sp.contains("fav_" + providerId + "_" + channelId)) {
-            return sp.getBoolean("fav_" + providerId + "_" + channelId, false);
+        int eff = getEffectiveProviderId(providerId);
+
+        if (channelId > 0) {
+            if (sp.getBoolean("fav_" + providerId + "_" + channelId, false)) return true;
+            if (sp.getBoolean("fav_" + eff + "_" + channelId, false)) return true;
+            if (providerId == 43 || providerId == 648 || eff == 648) {
+                if (sp.getBoolean("fav_648_" + channelId, false)) return true;
+                if (sp.getBoolean("fav_43_" + channelId, false)) return true;
+            }
         }
-        return sp.getBoolean("fav_" + providerId + "_lcn_" + lcn, false);
+        if (lcn != null && !lcn.isEmpty()) {
+            if (sp.getBoolean("fav_" + providerId + "_lcn_" + lcn, false)) return true;
+            if (sp.getBoolean("fav_" + eff + "_lcn_" + lcn, false)) return true;
+            if (providerId == 43 || providerId == 648 || eff == 648) {
+                if (sp.getBoolean("fav_648_lcn_" + lcn, false)) return true;
+                if (sp.getBoolean("fav_43_lcn_" + lcn, false)) return true;
+            }
+        }
+        return false;
     }
 
     public void setFavorite(int providerId, int channelId, String lcn, boolean isFav) {
         android.content.SharedPreferences.Editor ed = getUserPrefs().edit();
+        int eff = getEffectiveProviderId(providerId);
+
         if (channelId > 0) {
             ed.putBoolean("fav_" + providerId + "_" + channelId, isFav);
+            ed.putBoolean("fav_" + eff + "_" + channelId, isFav);
+            if (providerId == 43 || providerId == 648 || eff == 648) {
+                ed.putBoolean("fav_648_" + channelId, isFav);
+                ed.putBoolean("fav_43_" + channelId, isFav);
+            }
         }
-        ed.putBoolean("fav_" + providerId + "_lcn_" + lcn, isFav);
+        if (lcn != null && !lcn.isEmpty()) {
+            ed.putBoolean("fav_" + providerId + "_lcn_" + lcn, isFav);
+            ed.putBoolean("fav_" + eff + "_lcn_" + lcn, isFav);
+            if (providerId == 43 || providerId == 648 || eff == 648) {
+                ed.putBoolean("fav_648_lcn_" + lcn, isFav);
+                ed.putBoolean("fav_43_lcn_" + lcn, isFav);
+            }
+        }
         ed.apply();
     }
 
     public boolean toggleFavorite(int providerId, Channel ch) {
+        if (ch == null) return false;
         boolean newState = !isFavorite(providerId, ch.channelId, ch.lcn);
         ch.isFavorite = newState;
         setFavorite(providerId, ch.channelId, ch.lcn, newState);
@@ -471,8 +508,47 @@ public class LcnDatabaseHelper {
 
     public String getCustomLcn(int providerId, int channelId, String defaultLcn) {
         android.content.SharedPreferences sp = getUserPrefs();
-        if (channelId > 0 && sp.contains("lcn_" + providerId + "_" + channelId)) {
-            return sp.getString("lcn_" + providerId + "_" + channelId, defaultLcn);
+        int eff = getEffectiveProviderId(providerId);
+
+        if (channelId > 0) {
+            if (sp.contains("lcn_" + providerId + "_" + channelId)) {
+                String val = sp.getString("lcn_" + providerId + "_" + channelId, null);
+                if (val != null && !val.trim().isEmpty()) return val.trim();
+            }
+            if (sp.contains("lcn_" + eff + "_" + channelId)) {
+                String val = sp.getString("lcn_" + eff + "_" + channelId, null);
+                if (val != null && !val.trim().isEmpty()) return val.trim();
+            }
+            if (providerId == 43 || providerId == 648 || eff == 648) {
+                if (sp.contains("lcn_648_" + channelId)) {
+                    String val = sp.getString("lcn_648_" + channelId, null);
+                    if (val != null && !val.trim().isEmpty()) return val.trim();
+                }
+                if (sp.contains("lcn_43_" + channelId)) {
+                    String val = sp.getString("lcn_43_" + channelId, null);
+                    if (val != null && !val.trim().isEmpty()) return val.trim();
+                }
+            }
+        }
+        if (defaultLcn != null && !defaultLcn.isEmpty()) {
+            if (sp.contains("lcn_" + providerId + "_orig_" + defaultLcn)) {
+                String val = sp.getString("lcn_" + providerId + "_orig_" + defaultLcn, null);
+                if (val != null && !val.trim().isEmpty()) return val.trim();
+            }
+            if (sp.contains("lcn_" + eff + "_orig_" + defaultLcn)) {
+                String val = sp.getString("lcn_" + eff + "_orig_" + defaultLcn, null);
+                if (val != null && !val.trim().isEmpty()) return val.trim();
+            }
+            if (providerId == 43 || providerId == 648 || eff == 648) {
+                if (sp.contains("lcn_648_orig_" + defaultLcn)) {
+                    String val = sp.getString("lcn_648_orig_" + defaultLcn, null);
+                    if (val != null && !val.trim().isEmpty()) return val.trim();
+                }
+                if (sp.contains("lcn_43_orig_" + defaultLcn)) {
+                    String val = sp.getString("lcn_43_orig_" + defaultLcn, null);
+                    if (val != null && !val.trim().isEmpty()) return val.trim();
+                }
+            }
         }
         return defaultLcn;
     }
@@ -480,10 +556,23 @@ public class LcnDatabaseHelper {
     public void setCustomLcn(int providerId, int channelId, String newLcn) {
         if (channelId <= 0) return;
         android.content.SharedPreferences.Editor ed = getUserPrefs().edit();
+        int eff = getEffectiveProviderId(providerId);
+
         if (newLcn == null || newLcn.trim().isEmpty()) {
             ed.remove("lcn_" + providerId + "_" + channelId);
+            ed.remove("lcn_" + eff + "_" + channelId);
+            if (providerId == 43 || providerId == 648 || eff == 648) {
+                ed.remove("lcn_648_" + channelId);
+                ed.remove("lcn_43_" + channelId);
+            }
         } else {
-            ed.putString("lcn_" + providerId + "_" + channelId, newLcn.trim());
+            String val = newLcn.trim();
+            ed.putString("lcn_" + providerId + "_" + channelId, val);
+            ed.putString("lcn_" + eff + "_" + channelId, val);
+            if (providerId == 43 || providerId == 648 || eff == 648) {
+                ed.putString("lcn_648_" + channelId, val);
+                ed.putString("lcn_43_" + channelId, val);
+            }
         }
         ed.apply();
     }
@@ -529,10 +618,7 @@ public class LcnDatabaseHelper {
         SQLiteDatabase db = getDb();
         if (db == null) return list;
 
-        int effectiveId = providerId;
-        if (providerId == 43) {
-            effectiveId = 648; // Default to Kerala Vision Digital Network Kochi
-        }
+        int effectiveId = getEffectiveProviderId(providerId);
 
         String sql = "SELECT pc.key as lcn, c.name, c.genre, c.language, c.id, c.image " +
                 "FROM provider_channels pc " +
@@ -550,8 +636,8 @@ public class LcnDatabaseHelper {
                 String image = c.getString(5) != null ? c.getString(5) : "";
 
                 Channel ch = new Channel(origLcn, name, genre, language, channelId, image);
-                ch.customLcn = getCustomLcn(providerId, channelId, origLcn);
-                ch.isFavorite = isFavorite(providerId, channelId, origLcn);
+                ch.customLcn = getCustomLcn(effectiveId, channelId, origLcn);
+                ch.isFavorite = isFavorite(effectiveId, channelId, origLcn);
                 list.add(ch);
             }
         } catch (Exception e) {
@@ -576,8 +662,8 @@ public class LcnDatabaseHelper {
                     String image = c.getString(5) != null ? c.getString(5) : "";
 
                     Channel ch = new Channel(origLcn, name, genre, language, channelId, image);
-                    ch.customLcn = getCustomLcn(providerId, channelId, origLcn);
-                    ch.isFavorite = isFavorite(providerId, channelId, origLcn);
+                    ch.customLcn = getCustomLcn(effectiveId, channelId, origLcn);
+                    ch.isFavorite = isFavorite(effectiveId, channelId, origLcn);
                     list.add(ch);
                 }
             } catch (Exception e) {
@@ -594,8 +680,14 @@ public class LcnDatabaseHelper {
             if (a.isFavorite != b.isFavorite) {
                 return a.isFavorite ? -1 : 1; // Favourites come first
             }
-            int useA = stbPrefs.getInt("ch_use_" + providerId + "_" + a.getDisplayLcn(), 0);
-            int useB = stbPrefs.getInt("ch_use_" + providerId + "_" + b.getDisplayLcn(), 0);
+            int useA = Math.max(
+                    stbPrefs.getInt("ch_use_" + providerId + "_" + a.getDisplayLcn(), 0),
+                    stbPrefs.getInt("ch_use_" + effectiveId + "_" + a.getDisplayLcn(), 0)
+            );
+            int useB = Math.max(
+                    stbPrefs.getInt("ch_use_" + providerId + "_" + b.getDisplayLcn(), 0),
+                    stbPrefs.getInt("ch_use_" + effectiveId + "_" + b.getDisplayLcn(), 0)
+            );
             if (useA != useB) {
                 return Integer.compare(useB, useA); // Higher usage comes next
             }

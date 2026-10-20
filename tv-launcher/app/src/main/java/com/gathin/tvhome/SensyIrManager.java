@@ -308,13 +308,17 @@ public class SensyIrManager {
     public void tuneChannelAsync(String lcn, Map<String, String> keyCodes, int bitLength, Runnable onComplete) {
         executor.execute(() -> {
             try {
+                Log.i(TAG, "tuneChannelAsync tuning LCN: " + lcn);
                 for (int i = 0; i < lcn.length(); i++) {
                     char digit = lcn.charAt(i);
                     String hex = keyCodes.get(String.valueOf(digit));
                     if (hex != null && !hex.isEmpty()) {
+                        Log.i(TAG, "tuneChannelAsync digit '" + digit + "' -> hex " + hex);
                         int[] pattern = encodeNec(hex, bitLength);
                         transmitRaw(38000, pattern);
                         Thread.sleep(120);
+                    } else {
+                        Log.w(TAG, "tuneChannelAsync missing keycode for digit '" + digit + "'");
                     }
                 }
             } catch (Exception e) {

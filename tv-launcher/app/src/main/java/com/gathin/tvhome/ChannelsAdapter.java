@@ -59,15 +59,18 @@ public class ChannelsAdapter extends RecyclerView.Adapter<ChannelsAdapter.Channe
         if (list != null) {
             List<LcnDatabaseHelper.Channel> sorted = new ArrayList<>(list);
             Collections.sort(sorted, (a, b) -> {
-                int useA = stbPrefs.getInt("ch_use_" + providerId + "_" + a.lcn, 0);
-                int useB = stbPrefs.getInt("ch_use_" + providerId + "_" + b.lcn, 0);
+                if (a.isFavorite != b.isFavorite) {
+                    return a.isFavorite ? -1 : 1;
+                }
+                int useA = stbPrefs.getInt("ch_use_" + providerId + "_" + a.getDisplayLcn(), 0);
+                int useB = stbPrefs.getInt("ch_use_" + providerId + "_" + b.getDisplayLcn(), 0);
                 if (useA != useB) {
                     return Integer.compare(useB, useA); // Higher usage comes first
                 }
                 try {
-                    return Integer.compare(Integer.parseInt(a.lcn), Integer.parseInt(b.lcn));
+                    return Integer.compare(Integer.parseInt(a.getDisplayLcn()), Integer.parseInt(b.getDisplayLcn()));
                 } catch (Exception e) {
-                    return a.lcn.compareTo(b.lcn);
+                    return a.getDisplayLcn().compareTo(b.getDisplayLcn());
                 }
             });
             // Show top 30 most used / popular channels in the shelf
@@ -88,18 +91,22 @@ public class ChannelsAdapter extends RecyclerView.Adapter<ChannelsAdapter.Channe
     public void onBindViewHolder(@NonNull ChannelViewHolder holder, int position) {
         if (position < channels.size()) {
             LcnDatabaseHelper.Channel ch = channels.get(position);
-            int useCount = stbPrefs.getInt("ch_use_" + providerId + "_" + ch.lcn, 0);
-            if (useCount > 0) {
+            String displayLcn = ch.getDisplayLcn();
+            int useCount = stbPrefs.getInt("ch_use_" + providerId + "_" + displayLcn, 0);
+            if (ch.isFavorite) {
+                holder.genre.setText("★ FAVOURITE");
+                holder.genre.setTextColor(0xFF38BDF8);
+            } else if (useCount > 0) {
                 holder.genre.setText("★ " + (ch.genre != null && !ch.genre.isEmpty() ? ch.genre : "WATCHED"));
                 holder.genre.setTextColor(0xFF38BDF8);
             } else {
                 holder.genre.setText(ch.genre != null && !ch.genre.isEmpty() ? ch.genre : "GENERAL");
                 holder.genre.setTextColor(0xFFA1A1AA);
             }
-            holder.lcn.setText(ch.lcn);
+            holder.lcn.setText(ch.isFavorite ? ("★ " + displayLcn) : displayLcn);
             holder.lcn.setVisibility(View.VISIBLE);
             holder.genre.setVisibility(View.GONE);
-            holder.name.setText(ch.lcn + " · " + ch.name);
+            holder.name.setText(displayLcn + " · " + ch.name);
             holder.name.setVisibility(View.INVISIBLE);
 
             int logoRes = getChannelLogoRes(ch.channelId);
