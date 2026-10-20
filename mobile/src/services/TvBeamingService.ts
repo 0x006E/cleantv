@@ -278,6 +278,24 @@ export const TvBeamingService = {
     },
 
     /**
+     * Set active remote model & provider on the TV launcher
+     */
+    async selectRemote(
+        tvIp: string,
+        remoteId: number,
+        bitLength: number = 32,
+        providerId?: number,
+        providerTitle?: string,
+        token?: string | null
+    ): Promise<boolean> {
+        const payload: any = { remoteId, bitLength };
+        if (providerId) payload.providerId = providerId;
+        if (providerTitle) payload.providerTitle = providerTitle;
+        const data = await this.postEncrypted(tvIp, '/api/select-remote', payload, token);
+        return !!data.success;
+    },
+
+    /**
      * Pull complete settings backup from the TV
      */
     async pullSettingsFromTv(tvIp: string, token?: string | null): Promise<any> {

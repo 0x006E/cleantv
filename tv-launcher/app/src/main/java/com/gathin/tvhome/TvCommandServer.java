@@ -438,6 +438,56 @@ public final class TvCommandServer {
                     sendResponse(out, 400, "application/json", response.toString());
                 }
 
+            } else if ("/api/select-remote".equals(path) && "POST".equals(method)) {
+                if (!isAuthorized(clientToken)) {
+                    response.put("success", false);
+                    response.put("error", "Unauthorized. Device not paired with TV.");
+                    sendResponse(out, 401, "application/json", response.toString());
+                    return;
+                }
+
+                int newRemoteId = 0;
+                int newBitLength = 32;
+                int newProviderId = 0;
+                String newProviderTitle = null;
+
+                if (decryptedBodyJson != null) {
+                    if (decryptedBodyJson.has("remoteId")) newRemoteId = decryptedBodyJson.getInt("remoteId");
+                    if (decryptedBodyJson.has("bitLength")) newBitLength = decryptedBodyJson.getInt("bitLength");
+                    if (decryptedBodyJson.has("providerId")) newProviderId = decryptedBodyJson.getInt("providerId");
+                    if (decryptedBodyJson.has("providerTitle")) newProviderTitle = decryptedBodyJson.getString("providerTitle");
+                } else if (rawBodyJson != null) {
+                    if (rawBodyJson.has("remoteId")) newRemoteId = rawBodyJson.getInt("remoteId");
+                    if (rawBodyJson.has("bitLength")) newBitLength = rawBodyJson.getInt("bitLength");
+                    if (rawBodyJson.has("providerId")) newProviderId = rawBodyJson.getInt("providerId");
+                    if (rawBodyJson.has("providerTitle")) newProviderTitle = rawBodyJson.getString("providerTitle");
+                }
+
+                if (newRemoteId > 0) {
+                    SharedPreferences.Editor ed = stbPrefs.edit();
+                    ed.putInt("remote_id", newRemoteId);
+                    ed.putInt("bit_length", newBitLength);
+                    if (newProviderId > 0) ed.putInt("provider_id", newProviderId);
+                    if (newProviderTitle != null) ed.putString("provider_title", newProviderTitle);
+                    ed.apply();
+
+                    MainActivity.reloadStbSettings();
+                    TvLogger.i("TvCommandServer", "Selected remote updated: remoteId=" + newRemoteId + ", title=" + newProviderTitle);
+
+                    response.put("success", true);
+                    response.put("remoteId", newRemoteId);
+                    response.put("providerTitle", newProviderTitle != null ? newProviderTitle : stbPrefs.getString("provider_title", ""));
+                } else {
+                    response.put("success", false);
+                    response.put("error", "Missing remoteId parameter");
+                }
+
+                if (isEncryptedRequest && activeSessionKey != null) {
+                    sendEncryptedResponse(out, activeSessionKey, response);
+                } else {
+                    sendResponse(out, 200, "application/json", response.toString());
+                }
+
             } else if ("/api/custom-remote".equals(path) && "POST".equals(method)) {
                 if (!isAuthorized(clientToken)) {
                     response.put("success", false);

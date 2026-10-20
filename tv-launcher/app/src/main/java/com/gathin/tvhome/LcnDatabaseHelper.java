@@ -53,6 +53,12 @@ public class LcnDatabaseHelper {
                             needsCopy = true;
                         }
                     }
+                    try (Cursor kc = existing.rawQuery("SELECT count(*) FROM provider_channels WHERE provider_id = 648", null)) {
+                        if (kc.moveToFirst() && kc.getInt(0) == 0) {
+                            Log.i(TAG, "On-disk DB missing regional channels; updating to enriched v" + BUNDLED_DB_VERSION);
+                            needsCopy = true;
+                        }
+                    }
                 } catch (Exception e) {
                     needsCopy = true;
                 }
@@ -340,9 +346,20 @@ public class LcnDatabaseHelper {
         if (db == null) return list;
 
         int groupId = 0;
-        try (Cursor c = db.rawQuery("SELECT group_id FROM providers WHERE id = ?", new String[]{String.valueOf(providerId)})) {
-            if (c.moveToFirst()) {
-                groupId = c.getInt(0);
+        if (providerId == 43) {
+            groupId = 43; // Kerala Vision standard group ID
+        } else {
+            try (Cursor c = db.rawQuery("SELECT id FROM provider_groups WHERE id = ?", new String[]{String.valueOf(providerId)})) {
+                if (c.moveToFirst()) {
+                    groupId = c.getInt(0);
+                }
+            } catch (Exception ignored) {}
+            if (groupId == 0) {
+                try (Cursor c = db.rawQuery("SELECT group_id FROM providers WHERE id = ?", new String[]{String.valueOf(providerId)})) {
+                    if (c.moveToFirst()) {
+                        groupId = c.getInt(0);
+                    }
+                } catch (Exception ignored) {}
             }
         }
 
@@ -471,10 +488,51 @@ public class LcnDatabaseHelper {
         ed.apply();
     }
 
+    public boolean importRegion(int regionId) {
+        try {
+            int version = getDatabaseVersion();
+            if (version <= 0) version = BUNDLED_DB_VERSION;
+            String url = SENSARA_CDN_BASE + "/regional/lcndb-r" + regionId + "v" + version + ".db";
+            File tmp = new File(context.getCacheDir(), "region_" + regionId + ".db");
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            conn.setConnectTimeout(6000);
+            conn.setReadTimeout(6000);
+            if (conn.getResponseCode() != 200) {
+                conn.disconnect();
+                return false;
+            }
+            try (InputStream is = conn.getInputStream();
+                 OutputStream os = new FileOutputStream(tmp)) {
+                byte[] b = new byte[32768];
+                int r;
+                while ((r = is.read(b)) != -1) os.write(b, 0, r);
+            }
+            conn.disconnect();
+
+            File dbFile = context.getDatabasePath(DB_NAME);
+            try (SQLiteDatabase writableDb = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE)) {
+                writableDb.execSQL("ATTACH DATABASE ? AS region", new String[]{tmp.getAbsolutePath()});
+                writableDb.execSQL("INSERT OR REPLACE INTO provider_channels (provider_id, channel_id, key, user_id) SELECT provider_id, channel_id, key, user_id FROM region.raw_channel_mapping");
+                writableDb.execSQL("DETACH DATABASE region");
+            }
+            tmp.delete();
+            Log.i(TAG, "Imported regional channels for region " + regionId);
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "importRegion error", e);
+            return false;
+        }
+    }
+
     public List<Channel> getChannelsForProvider(int providerId, int limit) {
         List<Channel> list = new ArrayList<>();
         SQLiteDatabase db = getDb();
         if (db == null) return list;
+
+        int effectiveId = providerId;
+        if (providerId == 43) {
+            effectiveId = 648; // Default to Kerala Vision Digital Network Kochi
+        }
 
         String sql = "SELECT pc.key as lcn, c.name, c.genre, c.language, c.id, c.image " +
                 "FROM provider_channels pc " +
@@ -482,7 +540,7 @@ public class LcnDatabaseHelper {
                 "WHERE pc.provider_id = ? " +
                 "ORDER BY CAST(pc.key AS INTEGER) ASC LIMIT ?";
 
-        try (Cursor c = db.rawQuery(sql, new String[]{String.valueOf(providerId), String.valueOf(limit)})) {
+        try (Cursor c = db.rawQuery(sql, new String[]{String.valueOf(effectiveId), String.valueOf(limit)})) {
             while (c.moveToNext()) {
                 String origLcn = c.getString(0);
                 String name = c.getString(1);
@@ -498,6 +556,33 @@ public class LcnDatabaseHelper {
             }
         } catch (Exception e) {
             Log.e(TAG, "getChannelsForProvider error", e);
+        }
+
+        // Fallback: if no channels found for effectiveId, query any provider belonging to group 43
+        if (list.isEmpty()) {
+            String fallbackSql = "SELECT pc.key as lcn, c.name, c.genre, c.language, c.id, c.image " +
+                    "FROM provider_channels pc " +
+                    "JOIN channels c ON pc.channel_id = c.id " +
+                    "WHERE pc.provider_id IN (SELECT id FROM providers WHERE group_id = 43) " +
+                    "GROUP BY pc.channel_id " +
+                    "ORDER BY CAST(pc.key AS INTEGER) ASC LIMIT ?";
+            try (Cursor c = db.rawQuery(fallbackSql, new String[]{String.valueOf(limit)})) {
+                while (c.moveToNext()) {
+                    String origLcn = c.getString(0);
+                    String name = c.getString(1);
+                    String genre = c.getString(2) != null ? c.getString(2) : "General";
+                    String language = c.getString(3) != null ? c.getString(3) : "";
+                    int channelId = c.getInt(4);
+                    String image = c.getString(5) != null ? c.getString(5) : "";
+
+                    Channel ch = new Channel(origLcn, name, genre, language, channelId, image);
+                    ch.customLcn = getCustomLcn(providerId, channelId, origLcn);
+                    ch.isFavorite = isFavorite(providerId, channelId, origLcn);
+                    list.add(ch);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "fallback getChannels error", e);
+            }
         }
 
         // Sort:

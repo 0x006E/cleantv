@@ -118,6 +118,9 @@ export default function App() {
                 if (st?.providerTitle) {
                     setLastLog(`CleanTV connected (${st.providerTitle})`);
                 }
+                if (st && st.remoteId > 0) {
+                    syncRemoteWithTv(st.remoteId, st.providerId, st.providerTitle);
+                }
             },
             onKeyMapLoaded: (keys, title) => {
                 setKeyMap(keys);
@@ -181,6 +184,41 @@ export default function App() {
         }
     };
 
+    const syncRemoteWithTv = async (remoteId: number, providerId?: number, providerTitle?: string) => {
+        try {
+            Logger.info('App', `Pulling active remote from CleanTV: Model #${remoteId} (${providerTitle || 'Kerala Vision'})`);
+            const targetTitle = providerTitle || 'Kerala Vision';
+            let p = selectedProvider;
+            if (!p || (providerTitle && !p.title.toLowerCase().includes(providerTitle.toLowerCase()))) {
+                const results = await SensyIr.searchProviders(targetTitle, 5);
+                if (results.length > 0) {
+                    p = results[0];
+                    setSelectedProvider(p);
+                }
+            }
+
+            const effectiveProviderId = p ? p.id : (providerId || 648);
+            const remotes = await SensyIr.getRemotesForProvider(effectiveProviderId);
+            if (remotes && remotes.length > 0) {
+                setCandidateRemotes(remotes);
+                const matchIndex = remotes.findIndex((r) => r.id === remoteId);
+                const activeIndex = matchIndex !== -1 ? matchIndex : 0;
+                setSelectedRemoteIndex(activeIndex);
+                const chosenRemote = remotes[activeIndex];
+                await loadRemoteKeys(chosenRemote.id);
+
+                // Synchronize customRemote across all tabs!
+                setCustomRemote((prev) => ({
+                    ...prev,
+                    baseRemoteId: chosenRemote.id,
+                }));
+                setLastLog(`Active Remote: Model #${chosenRemote.id} (${chosenRemote.bitLength}-bit)`);
+            }
+        } catch (err: any) {
+            Logger.warn('App', `Remote sync failed: ${err.message}`);
+        }
+    };
+
     const selectProvider = async (provider: ProviderItem) => {
         setSelectedProvider(provider);
         setIsSearchOpen(false);
@@ -189,9 +227,19 @@ export default function App() {
         try {
             const remotes = await SensyIr.getRemotesForProvider(provider.id);
             setCandidateRemotes(remotes);
-            setSelectedRemoteIndex(0);
+            // Check if current active remote or TV remote exists in candidate list
+            const tvStatus = TvConnectionManager.getStatus();
+            const preferredRemoteId = tvStatus?.remoteId || 184;
+            const matchIdx = remotes.findIndex(r => r.id === preferredRemoteId);
+            const activeIdx = matchIdx !== -1 ? matchIdx : 0;
+            setSelectedRemoteIndex(activeIdx);
             if (remotes.length > 0) {
-                await loadRemoteKeys(remotes[0].id);
+                const chosen = remotes[activeIdx];
+                await loadRemoteKeys(chosen.id);
+                setCustomRemote(prev => ({
+                    ...prev,
+                    baseRemoteId: chosen.id,
+                }));
             } else {
                 setKeyMap({});
                 setLastLog(`No remotes in database for ${provider.title}`);
@@ -219,6 +267,26 @@ export default function App() {
         const r = candidateRemotes[index];
         if (r) {
             await loadRemoteKeys(r.id);
+            // Synchronize across all tabs (Custom Remote Studio & Scanner)
+            setCustomRemote((prev) => ({
+                ...prev,
+                baseRemoteId: r.id,
+            }));
+            // Update CleanTV launcher if connected and paired
+            if (isTvConnected && isPaired) {
+                try {
+                    await TvBeamingService.selectRemote(
+                        tvIp,
+                        r.id,
+                        r.bitLength,
+                        selectedProvider?.id,
+                        selectedProvider?.title
+                    );
+                    setLastLog(`CleanTV remote switched to Model #${r.id}`);
+                } catch (e: any) {
+                    Logger.warn('App', `Failed to update remote on TV: ${e.message}`);
+                }
+            }
         }
     };
 
@@ -990,6 +1058,7 @@ export default function App() {
                             <KeyScannerView
                                 tvIp={tvIp}
                                 isTvConnected={isTvConnected}
+                                activeRemote={candidateRemotes[selectedRemoteIndex]}
                                 onAssignKey={handleAssignKeyFromScanner}
                                 onBlastDirect={(hex) => blastHexCode(hex)}
                             />
@@ -1002,6 +1071,7 @@ export default function App() {
                             <CustomRemoteView
                                 tvIp={tvIp}
                                 isTvConnected={isTvConnected}
+                                activeRemote={candidateRemotes[selectedRemoteIndex]}
                                 customRemote={customRemote}
                                 onUpdateCustomRemote={setCustomRemote}
                                 onBlastDirect={(hex) => blastHexCode(hex)}

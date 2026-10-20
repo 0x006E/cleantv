@@ -18,6 +18,7 @@ import { theme } from '../lib/theme';
 interface CustomRemoteViewProps {
     tvIp: string;
     isTvConnected: boolean;
+    activeRemote?: { id: number; protocol: number; bitLength: number; gap: number };
     customRemote: CustomRemoteConfig;
     onUpdateCustomRemote: (updated: CustomRemoteConfig) => void;
     onBlastDirect: (hexCode: string) => Promise<boolean>;
@@ -27,6 +28,7 @@ interface CustomRemoteViewProps {
 export function CustomRemoteView({
     tvIp,
     isTvConnected,
+    activeRemote,
     customRemote,
     onUpdateCustomRemote,
     onBlastDirect,
@@ -82,9 +84,14 @@ export function CustomRemoteView({
                         <View style={{ flex: 1 }}>
                             <CardTitle>Custom Remote Studio</CardTitle>
                             <CardDescription>
-                                {customRemote.name} • {keyEntries.length} custom overrides
+                                {customRemote.name} • Base: Model #{activeRemote?.id ?? customRemote.baseRemoteId} • {keyEntries.length} overrides
                             </CardDescription>
                         </View>
+                        <Badge variant="outline" style={{ borderColor: '#38BDF8', borderRadius: 0, marginRight: 8 }}>
+                            <Text style={{ color: '#38BDF8', fontSize: 11, fontWeight: 'bold' }}>
+                                Model #{activeRemote?.id ?? customRemote.baseRemoteId}
+                            </Text>
+                        </Badge>
                         <Button
                             variant="default"
                             size="sm"

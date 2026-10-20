@@ -22,6 +22,7 @@ import { theme } from '../lib/theme';
 interface KeyScannerViewProps {
     tvIp: string;
     isTvConnected: boolean;
+    activeRemote?: { id: number; protocol: number; bitLength: number; gap: number };
     onAssignKey: (keyName: string, hexCode: string) => void;
     onBlastDirect: (hexCode: string) => Promise<boolean>;
 }
@@ -29,6 +30,7 @@ interface KeyScannerViewProps {
 export function KeyScannerView({
     tvIp,
     isTvConnected,
+    activeRemote,
     onAssignKey,
     onBlastDirect,
 }: KeyScannerViewProps) {
@@ -78,9 +80,18 @@ export function KeyScannerView({
             {/* Header / Intro Card */}
             <Card>
                 <CardHeader>
-                    <CardTitle>STB Key Discovery &amp; Scanner</CardTitle>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <CardTitle>STB Key Discovery &amp; Scanner</CardTitle>
+                        {activeRemote && (
+                            <Badge variant="outline" style={{ borderColor: '#38BDF8', borderRadius: 0 }}>
+                                <Text style={{ color: '#38BDF8', fontSize: 11, fontWeight: 'bold' }}>
+                                    Model #{activeRemote.id}
+                                </Text>
+                            </Badge>
+                        )}
+                    </View>
                     <CardDescription>
-                        Test missing commands against your STB. When your STB reacts, lock it in!
+                        Test missing commands against your STB for Model #{activeRemote?.id ?? 43}. When your STB reacts, lock it in!
                     </CardDescription>
                 </CardHeader>
             </Card>

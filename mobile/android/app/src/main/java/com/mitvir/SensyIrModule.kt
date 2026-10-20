@@ -84,6 +84,11 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
                         needsCopy = true
                     }
                     c.close()
+                    val kc = testDb.rawQuery("SELECT count(*) FROM provider_channels WHERE provider_id = 648", null)
+                    if (kc.moveToFirst() && kc.getInt(0) == 0) {
+                        needsCopy = true
+                    }
+                    kc.close()
                     testDb.close()
                 } catch (e: Exception) {
                     needsCopy = true
@@ -272,11 +277,23 @@ class SensyIrModule(private val reactContext: ReactApplicationContext) : ReactCo
                 val db = getDb()
                 // Check if provider has specific group_id
                 var groupId = 0
-                val pCursor = db.rawQuery("SELECT group_id FROM providers WHERE id = ?", arrayOf(providerId.toString()))
-                if (pCursor.moveToFirst()) {
-                    groupId = pCursor.getInt(0)
+                if (providerId == 43) {
+                    groupId = 43 // Kerala Vision group ID
+                } else {
+                    val gCursor = db.rawQuery("SELECT id FROM provider_groups WHERE id = ?", arrayOf(providerId.toString()))
+                    if (gCursor.moveToFirst()) {
+                        groupId = gCursor.getInt(0)
+                    }
+                    gCursor.close()
+
+                    if (groupId == 0) {
+                        val pCursor = db.rawQuery("SELECT group_id FROM providers WHERE id = ?", arrayOf(providerId.toString()))
+                        if (pCursor.moveToFirst()) {
+                            groupId = pCursor.getInt(0)
+                        }
+                        pCursor.close()
+                    }
                 }
-                pCursor.close()
 
                 val query = if (groupId > 0) {
                     """
