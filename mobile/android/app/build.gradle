@@ -16,12 +16,30 @@ android {
         versionName "1.0"
     }
 
+    signingConfigs {
+        release {
+            if (System.getenv("RELEASE_STORE_FILE") != null && file(System.getenv("RELEASE_STORE_FILE")).exists()) {
+                storeFile file(System.getenv("RELEASE_STORE_FILE"))
+                storePassword System.getenv("RELEASE_STORE_PASSWORD")
+                keyAlias System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword System.getenv("RELEASE_KEY_PASSWORD")
+            } else if (rootProject.file("../../cleantv-release.jks").exists()) {
+                storeFile rootProject.file("../../cleantv-release.jks")
+                storePassword System.getenv("RELEASE_STORE_PASSWORD") ?: "cleantv123"
+                keyAlias System.getenv("RELEASE_KEY_ALIAS") ?: "cleantv"
+                keyPassword System.getenv("RELEASE_KEY_PASSWORD") ?: "cleantv123"
+            } else {
+                initWith debug
+            }
+        }
+    }
+
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }

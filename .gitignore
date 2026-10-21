@@ -22,6 +22,8 @@ devenv.local.yaml
 .pre-commit-config.yaml
 
 # Android & Gradle
+*.keystore
+*.jks
 .gradle/
 **/.gradle/
 build/

@@ -181,9 +181,44 @@ See the [Research & Hardware Engineering Guide](research/README.md) for reverse-
 
 ## Security & Privacy
 
-- **100% Local**: No internet connection, telemetry, or cloud accounts required.
+- **100% Local**: No internet connection, telemetry, or cloud accounts required for STB control or remote beaming.
 - **Encrypted Local Beaming**: All LAN commands use AES-256-GCM authenticated with a dynamically generated pairing PIN.
 - **Sandboxed Preferences**: Backups contain only STB channel customizations and pairing keys; private user data is never accessed.
+
+---
+
+## OTA Updates
+
+CleanTV supports manual over-the-air (OTA) updates directly from GitHub Releases without any app store.
+
+### How It Works
+
+1. Open the **Settings menu** from the TV launcher home screen (or navigate to **TV Home Settings**).
+2. Select **Check for Updates**.
+3. The launcher queries the [GitHub Releases API](https://api.github.com/repos/0x006E/cleantv/releases/latest), compares the published tag (`tag_name`) against the currently installed `versionName`, and:
+   - If a newer version exists: displays a dialog with the release name and changelog, then prompts to **Update Now**.
+   - If already up to date: shows a confirmation dialog (with an option to reinstall the current version).
+4. On confirmation, the APK is downloaded with a live progress bar directly to the device cache.
+5. The system package installer is launched automatically to apply the update. Because CleanTV uses a consistent release signing key (stored as a GitHub Actions secret), updates install seamlessly over the existing app without clearing data.
+
+> [!NOTE]
+> Updates are **never checked automatically** in the background. The check only runs when you explicitly select "Check for Updates".
+
+### Release Signing
+
+All builds published to GitHub Releases are signed with a dedicated release keystore whose key material is stored exclusively as a [GitHub Actions secret](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions) (`RELEASE_KEYSTORE_BASE64`). The keystore is never committed to the repository.
+
+| Secret | Purpose |
+|--------|---------|
+| `RELEASE_KEYSTORE_BASE64` | Base64-encoded `.jks` keystore file |
+| `RELEASE_STORE_PASSWORD` | Keystore password |
+| `RELEASE_KEY_ALIAS` | Key alias within the keystore |
+| `RELEASE_KEY_PASSWORD` | Key password |
+
+The CI workflow (`build-and-release.yml`) decodes the keystore into a temporary file at build time, builds and signs the APK, then discards it. Local developer builds fall back to the local `cleantv-release.jks` (if present, gitignored) or the Android debug keystore for development iteration.
+
+> [!CAUTION]
+> The release keystore **must not be rotated** once the app is installed on devices. Rotating the key requires uninstalling the app (losing all data) before the new signed build can be installed. Store a backup of `cleantv-release.jks` outside the repository in a secure location.
 
 ---
 

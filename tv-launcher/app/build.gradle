@@ -15,14 +15,36 @@ android {
         versionName '0.2'
     }
 
+    signingConfigs {
+        release {
+            if (System.getenv("RELEASE_STORE_FILE") != null && file(System.getenv("RELEASE_STORE_FILE")).exists()) {
+                storeFile file(System.getenv("RELEASE_STORE_FILE"))
+                storePassword System.getenv("RELEASE_STORE_PASSWORD")
+                keyAlias System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword System.getenv("RELEASE_KEY_PASSWORD")
+            } else if (rootProject.file("../cleantv-release.jks").exists()) {
+                storeFile rootProject.file("../cleantv-release.jks")
+                storePassword System.getenv("RELEASE_STORE_PASSWORD") ?: "cleantv123"
+                keyAlias System.getenv("RELEASE_KEY_ALIAS") ?: "cleantv"
+                keyPassword System.getenv("RELEASE_KEY_PASSWORD") ?: "cleantv123"
+            } else if (file("cleantv-release.jks").exists()) {
+                storeFile file("cleantv-release.jks")
+                storePassword System.getenv("RELEASE_STORE_PASSWORD") ?: "cleantv123"
+                keyAlias System.getenv("RELEASE_KEY_ALIAS") ?: "cleantv"
+                keyPassword System.getenv("RELEASE_KEY_PASSWORD") ?: "cleantv123"
+            } else {
+                initWith debug
+            }
+        }
+    }
+
     buildTypes {
         release {
             // R8 strips and optimises the code (AndroidX included): smaller APK, faster start on a slow TV CPU.
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            // Sideloaded over ADB, never published: sign with the debug key so it installs over a debug build.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
         }
     }
 

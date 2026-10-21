@@ -98,7 +98,6 @@ public class AppsRowAdapter extends RecyclerView.Adapter<AppsRowAdapter.ViewHold
         holder.card.setOnLongClickListener(v -> {
             if (item.pkg.isEmpty()) return false;
             Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + item.pkg));
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             try {
                 context.startActivity(i);
             } catch (ActivityNotFoundException ignored) {}

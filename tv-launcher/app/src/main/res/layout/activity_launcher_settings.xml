@@ -172,5 +172,20 @@
             style="@style/SettingsRow"
             android:layout_marginTop="10dp"
             android:text="Import Settings from File (/sdcard/Download)" />
+
+        <!-- Updates -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:text="Updates"
+            android:textColor="#FFFFFFFF"
+            android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/checkUpdatesChoice"
+            style="@style/SettingsRow"
+            android:layout_marginTop="10dp"
+            android:text="Check for Updates" />
     </LinearLayout>
 </ScrollView>

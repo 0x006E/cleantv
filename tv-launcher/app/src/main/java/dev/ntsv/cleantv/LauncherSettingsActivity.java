@@ -172,6 +172,11 @@ public final class LauncherSettingsActivity extends Activity {
                     .show();
         });
 
+        TextView checkUpdatesChoice = findViewById(R.id.checkUpdatesChoice);
+        if (checkUpdatesChoice != null) {
+            checkUpdatesChoice.setOnClickListener(v -> UpdateManager.checkForUpdates(this, true));
+        }
+
         refresh();
         columnChoices[Math.max(0, Math.min(columns - 4, 3))].requestFocus();
 

@@ -980,7 +980,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         AppsRowAdapter.AppItem ai = (AppsRowAdapter.AppItem) card.payload;
                         if (ai != null && !ai.pkg.isEmpty()) {
                             Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + ai.pkg));
-                            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                             try {
                                 startActivity(i);
                             } catch (ActivityNotFoundException ignored) {}
@@ -1795,6 +1794,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
         addSettingsMenuRow(rows, popup, "TV Home Settings", () -> startActivityForResult(
                 new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
+
+        addSettingsMenuRow(rows, popup, "Check for Updates", () -> UpdateManager.checkForUpdates(this, true));
 
         addSettingsMenuRow(rows, popup, "Android TV Settings", () -> openSystemSettings(Settings.ACTION_SETTINGS));
 
