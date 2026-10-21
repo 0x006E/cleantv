@@ -206,19 +206,7 @@ CleanTV supports manual over-the-air (OTA) updates directly from GitHub Releases
 
 ### Release Signing
 
-All builds published to GitHub Releases are signed with a dedicated release keystore whose key material is stored exclusively as a [GitHub Actions secret](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions) (`RELEASE_KEYSTORE_BASE64`). The keystore is never committed to the repository.
-
-| Secret | Purpose |
-|--------|---------|
-| `RELEASE_KEYSTORE_BASE64` | Base64-encoded `.jks` keystore file |
-| `RELEASE_STORE_PASSWORD` | Keystore password |
-| `RELEASE_KEY_ALIAS` | Key alias within the keystore |
-| `RELEASE_KEY_PASSWORD` | Key password |
-
-The CI workflow (`build-and-release.yml`) decodes the keystore into a temporary file at build time, builds and signs the APK, then discards it. Local developer builds fall back to the local `cleantv-release.jks` (if present, gitignored) or the Android debug keystore for development iteration.
-
-> [!CAUTION]
-> The release keystore **must not be rotated** once the app is installed on devices. Rotating the key requires uninstalling the app (losing all data) before the new signed build can be installed. Store a backup of `cleantv-release.jks` outside the repository in a secure location.
+All APKs published to GitHub Releases are signed with a consistent release key. This means OTA updates install seamlessly over the existing app without clearing any data or requiring an uninstall.
 
 ---
 
